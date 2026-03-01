@@ -151,23 +151,6 @@ export function MessageRenderer({
 								Queued
 							</span>
 						)}
-						{message.status === "sending" && (
-							<span
-								style={{
-									display: "flex",
-									alignItems: "center",
-									gap: "4px",
-								}}
-							>
-								<span
-									ref={(el) => {
-										if (el) setIcon(el, "loader");
-									}}
-									className="agent-client-spin"
-								/>{" "}
-								Sending...
-							</span>
-						)}
 						{message.status === "error" && (
 							<span
 								style={{
