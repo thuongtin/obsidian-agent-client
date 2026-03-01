@@ -26,8 +26,15 @@ export function MarkdownTextRenderer({
 		const component = new Component();
 		component.load();
 
-		// Render markdown
-		void MarkdownRenderer.render(plugin.app, text, el, "", component);
+		// Lấy path hiện tại để các plugin khác (như better-codeblock, dataview) không bị lỗi khi render markdown
+		const sourcePath = plugin.app.workspace.getActiveFile()?.path || "/";
+		void MarkdownRenderer.render(
+			plugin.app,
+			text,
+			el,
+			sourcePath,
+			component,
+		);
 
 		// Handle internal link clicks
 		const handleInternalLinkClick = (e: MouseEvent) => {
@@ -50,6 +57,9 @@ export function MarkdownTextRenderer({
 	}, [text, plugin]);
 
 	return (
-		<div ref={containerRef} className="agent-client-markdown-text-renderer" />
+		<div
+			ref={containerRef}
+			className="agent-client-markdown-text-renderer"
+		/>
 	);
 }
