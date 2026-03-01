@@ -5,12 +5,12 @@
  * Handles modal lifecycle (open/close) while delegating UI rendering to React.
  */
 
-import { Modal, App } from "obsidian";
+import { type App, Modal } from "obsidian";
 import * as React from "react";
-import { createRoot, Root } from "react-dom/client";
+import { createRoot, type Root } from "react-dom/client";
 import {
 	SessionHistoryContent,
-	SessionHistoryContentProps,
+	type SessionHistoryContentProps,
 } from "./SessionHistoryContent";
 
 /**

@@ -1,10 +1,12 @@
 import * as React from "react";
+
 const { useRef, useEffect } = React;
-import { getLogger } from "../../shared/logger";
-import type AgentClientPlugin from "../../plugin";
-import type { IChatViewHost } from "./types";
-import type { NoteMetadata } from "../../domain/ports/vault-access.port";
+
 import type { SlashCommand } from "../../domain/models/chat-session";
+import type { NoteMetadata } from "../../domain/ports/vault-access.port";
+import type AgentClientPlugin from "../../plugin";
+import { getLogger } from "../../shared/logger";
+import type { IChatViewHost } from "./types";
 
 /**
  * Dropdown type for suggestion display.

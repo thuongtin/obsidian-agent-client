@@ -1,21 +1,21 @@
-import { useState, useCallback, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type {
-	ChatSession,
-	SessionState,
-	SessionModeState,
-	SessionModelState,
-	SlashCommand,
+	BaseAgentSettings,
+	ClaudeAgentSettings,
+	CodexAgentSettings,
+	GeminiAgentSettings,
+} from "../domain/models/agent-config";
+import type {
 	AuthenticationMethod,
+	ChatSession,
+	SessionModelState,
+	SessionModeState,
+	SessionState,
+	SlashCommand,
 } from "../domain/models/chat-session";
 import type { IAgentClient } from "../domain/ports/agent-client.port";
 import type { ISettingsAccess } from "../domain/ports/settings-access.port";
 import type { AgentClientPluginSettings } from "../plugin";
-import type {
-	BaseAgentSettings,
-	ClaudeAgentSettings,
-	GeminiAgentSettings,
-	CodexAgentSettings,
-} from "../domain/models/agent-config";
 import { toAgentConfig } from "../shared/settings-utils";
 
 // ============================================================================
@@ -384,8 +384,7 @@ export function useAgentSession(
 					setErrorInfo({
 						title: "Agent Not Found",
 						message: `Agent with ID "${agentId}" not found in settings`,
-						suggestion:
-							"Please check your agent configuration in settings.",
+						suggestion: "Please check your agent configuration in settings.",
 					});
 					return;
 				}
@@ -436,8 +435,7 @@ export function useAgentSession(
 
 				if (needsInitialize) {
 					// Initialize connection to agent (spawn process + protocol handshake)
-					const initResult =
-						await agentClient.initialize(agentConfig);
+					const initResult = await agentClient.initialize(agentConfig);
 					authMethods = initResult.authMethods;
 					promptCapabilities = initResult.promptCapabilities;
 					agentCapabilities = initResult.agentCapabilities;
@@ -445,8 +443,7 @@ export function useAgentSession(
 				}
 
 				// Create new session (lightweight operation)
-				const sessionResult =
-					await agentClient.newSession(workingDirectory);
+				const sessionResult = await agentClient.newSession(workingDirectory);
 
 				// Success - update to ready state
 				setSession((prev) => ({
@@ -504,8 +501,7 @@ export function useAgentSession(
 				setErrorInfo({
 					title: "Session Creation Failed",
 					message: `Failed to create new session: ${error instanceof Error ? error.message : String(error)}`,
-					suggestion:
-						"Please check the agent configuration and try again.",
+					suggestion: "Please check the agent configuration and try again.",
 				});
 			}
 		},
@@ -547,18 +543,14 @@ export function useAgentSession(
 
 			try {
 				// Find agent settings
-				const agentSettings = findAgentSettings(
-					settings,
-					defaultAgentId,
-				);
+				const agentSettings = findAgentSettings(settings, defaultAgentId);
 
 				if (!agentSettings) {
 					setSession((prev) => ({ ...prev, state: "error" }));
 					setErrorInfo({
 						title: "Agent Not Found",
 						message: `Agent with ID "${defaultAgentId}" not found in settings`,
-						suggestion:
-							"Please check your agent configuration in settings.",
+						suggestion: "Please check your agent configuration in settings.",
 					});
 					return;
 				}
@@ -606,8 +598,7 @@ export function useAgentSession(
 
 				if (needsInitialize) {
 					// Initialize connection to agent
-					const initResult =
-						await agentClient.initialize(agentConfig);
+					const initResult = await agentClient.initialize(agentConfig);
 					authMethods = initResult.authMethods;
 					promptCapabilities = initResult.promptCapabilities;
 					agentCapabilities = initResult.agentCapabilities;
@@ -908,7 +899,62 @@ export function useAgentSession(
 				suggestion: error.suggestion,
 			});
 		});
-	}, [agentClient]);
+
+		// Register disconnect callback for unexpected exits
+		agentClient.onDisconnect(() => {
+			setSession((prev) => {
+				// Only attempt reconnect if we had an active session that supports loadSession
+				if (
+					(prev.state === "ready" || prev.state === "busy") &&
+					prev.sessionId &&
+					prev.agentCapabilities?.loadSession
+				) {
+					console.log(
+						`[useAgentSession] Unexpectedly disconnected. Will attempt to reconnect session ${prev.sessionId}...`,
+					);
+					return { ...prev, state: "reconnecting" };
+				}
+				// Otherwise just transition to error state
+				return { ...prev, state: "error" };
+			});
+			if (!errorInfo) {
+				setErrorInfo(
+					(prev) =>
+						prev || {
+							title: "Agent Disconnected",
+							message: "The agent process exited unexpectedly.",
+							suggestion: "Check the console logs or restart the session.",
+						},
+				);
+			}
+		});
+	}, [agentClient, errorInfo]);
+
+	// Auto-reconnect effect
+	useEffect(() => {
+		if (session.state === "reconnecting" && session.sessionId) {
+			const currentSessionId = session.sessionId;
+
+			// Small delay to prevent rapid crash loops
+			const timeout = setTimeout(() => {
+				console.log(
+					`[useAgentSession] Auto-reconnecting to session ${currentSessionId}...`,
+				);
+				loadSession(currentSessionId).catch((err) => {
+					console.error("[useAgentSession] Reconnect failed:", err);
+					setSession((prev) => ({ ...prev, state: "error" }));
+					setErrorInfo({
+						title: "Reconnect Failed",
+						message: `Failed to restore session: ${err instanceof Error ? err.message : String(err)}`,
+						suggestion:
+							"The agent might be crashing continuously. Try starting a new session.",
+					});
+				});
+			}, 1500);
+
+			return () => clearTimeout(timeout);
+		}
+	}, [session.state, session.sessionId, loadSession]);
 
 	/**
 	 * Update session state after loading/resuming/forking a session.

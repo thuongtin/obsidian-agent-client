@@ -1,7 +1,7 @@
-import { useState, useCallback } from "react";
+import { useCallback, useState } from "react";
 import type {
-	NoteMetadata,
 	IVaultAccess,
+	NoteMetadata,
 } from "../domain/ports/vault-access.port";
 
 export interface UseAutoMentionReturn {

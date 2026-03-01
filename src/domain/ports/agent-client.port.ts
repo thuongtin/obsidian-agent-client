@@ -11,21 +11,21 @@
  * adapter layer, keeping the domain logic stable.
  */
 
+import type { ProcessError } from "../models/agent-error";
 import type { PermissionOption } from "../models/chat-message";
 import type {
 	AuthenticationMethod,
-	SessionModeState,
 	SessionModelState,
+	SessionModeState,
 } from "../models/chat-session";
-import type { SessionUpdate } from "../models/session-update";
-import type { ProcessError } from "../models/agent-error";
 import type { PromptContent } from "../models/prompt-content";
 import type {
+	ForkSessionResult,
 	ListSessionsResult,
 	LoadSessionResult,
 	ResumeSessionResult,
-	ForkSessionResult,
 } from "../models/session-info";
+import type { SessionUpdate } from "../models/session-update";
 
 /**
  * Runtime configuration for launching an AI agent process.
@@ -313,6 +313,15 @@ export interface IAgentClient {
 	 * @param callback - Function to call when an error occurs
 	 */
 	onError(callback: (error: ProcessError) => void): void;
+
+	/**
+	 * Register callback for disconnection notifications.
+	 *
+	 * Called when the agent process exits or the connection is lost unexpectedly.
+	 *
+	 * @param callback - Function to call when disconnected
+	 */
+	onDisconnect(callback: () => void): void;
 
 	/**
 	 * Respond to a permission request.

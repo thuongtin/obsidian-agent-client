@@ -1,13 +1,16 @@
 import * as React from "react";
+
 const { useState, useMemo } = React;
-import { FileSystemAdapter } from "obsidian";
-import type { MessageContent } from "../../domain/models/chat-message";
-import type { IAcpClient } from "../../adapters/acp/acp.adapter";
-import type AgentClientPlugin from "../../plugin";
-import { TerminalRenderer } from "./TerminalRenderer";
-import { PermissionRequestSection } from "./PermissionRequestSection";
-import { toRelativePath } from "../../shared/path-utils";
+
 import * as Diff from "diff";
+import { FileSystemAdapter } from "obsidian";
+import type { IAcpClient } from "../../adapters/acp/acp.adapter";
+import type { MessageContent } from "../../domain/models/chat-message";
+import type AgentClientPlugin from "../../plugin";
+import { toRelativePath } from "../../shared/path-utils";
+import { PermissionRequestSection } from "./PermissionRequestSection";
+import { TerminalRenderer } from "./TerminalRenderer";
+
 // import { MarkdownTextRenderer } from "./MarkdownTextRenderer";
 
 interface ToolCallRendererProps {
@@ -15,10 +18,7 @@ interface ToolCallRendererProps {
 	plugin: AgentClientPlugin;
 	acpClient?: IAcpClient;
 	/** Callback to approve a permission request */
-	onApprovePermission?: (
-		requestId: string,
-		optionId: string,
-	) => Promise<void>;
+	onApprovePermission?: (requestId: string, optionId: string) => Promise<void>;
 }
 
 export function ToolCallRenderer({
@@ -39,9 +39,9 @@ export function ToolCallRenderer({
 	} = content;
 
 	// Local state for selected option (for immediate UI feedback)
-	const [selectedOptionId, setSelectedOptionId] = useState<
-		string | undefined
-	>(permissionRequest?.selectedOptionId);
+	const [selectedOptionId, setSelectedOptionId] = useState<string | undefined>(
+		permissionRequest?.selectedOptionId,
+	);
 
 	// Update selectedOptionId when permissionRequest changes
 	React.useEffect(() => {
@@ -163,13 +163,9 @@ export function ToolCallRenderer({
 								key={index}
 								diff={item}
 								plugin={plugin}
-								autoCollapse={
-									plugin.settings.displaySettings
-										.autoCollapseDiffs
-								}
+								autoCollapse={plugin.settings.displaySettings.autoCollapseDiffs}
 								collapseThreshold={
-									plugin.settings.displaySettings
-										.diffCollapseThreshold
+									plugin.settings.displaySettings.diffCollapseThreshold
 								}
 							/>
 						);
@@ -446,9 +442,7 @@ interface DiffLine {
  */
 function isNewFile(diff: DiffRendererProps["diff"]): boolean {
 	return (
-		diff.oldText === null ||
-		diff.oldText === undefined ||
-		diff.oldText === ""
+		diff.oldText === null || diff.oldText === undefined || diff.oldText === ""
 	);
 }
 
@@ -485,19 +479,13 @@ function renderWordDiff(
 			{filteredParts.map((part, partIdx) => {
 				if (part.type === "added") {
 					return (
-						<span
-							key={partIdx}
-							className="agent-client-diff-word-added"
-						>
+						<span key={partIdx} className="agent-client-diff-word-added">
 							{part.value}
 						</span>
 					);
 				} else if (part.type === "removed") {
 					return (
-						<span
-							key={partIdx}
-							className="agent-client-diff-word-removed"
-						>
+						<span key={partIdx} className="agent-client-diff-word-removed">
 							{part.value}
 						</span>
 					);
@@ -641,8 +629,7 @@ function DiffRenderer({
 				</span>
 				<span className="agent-client-diff-line-marker">{marker}</span>
 				<span className="agent-client-diff-line-content">
-					{line.wordDiff &&
-					(line.type === "added" || line.type === "removed")
+					{line.wordDiff && (line.type === "added" || line.type === "removed")
 						? renderWordDiff(line.wordDiff, line.type)
 						: line.content}
 				</span>
@@ -678,9 +665,7 @@ function DiffRenderer({
 					onClick={() => setIsCollapsed(!isCollapsed)}
 				>
 					<span className="agent-client-diff-expand-text">
-						{isCollapsed
-							? `${remainingLines} more lines`
-							: "Collapse"}
+						{isCollapsed ? `${remainingLines} more lines` : "Collapse"}
 					</span>
 					<span className="agent-client-diff-expand-icon">
 						{isCollapsed ? "▶" : "▲"}

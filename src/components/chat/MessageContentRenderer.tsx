@@ -1,9 +1,9 @@
 import * as React from "react";
-import type { MessageContent } from "../../domain/models/chat-message";
 import type { IAcpClient } from "../../adapters/acp/acp.adapter";
+import type { MessageContent } from "../../domain/models/chat-message";
 import type AgentClientPlugin from "../../plugin";
-import { MarkdownTextRenderer } from "./MarkdownTextRenderer";
 import { CollapsibleThought } from "./CollapsibleThought";
+import { MarkdownTextRenderer } from "./MarkdownTextRenderer";
 import { TerminalRenderer } from "./TerminalRenderer";
 import { TextWithMentions } from "./TextWithMentions";
 import { ToolCallRenderer } from "./ToolCallRenderer";
@@ -15,10 +15,7 @@ interface MessageContentRendererProps {
 	messageRole?: "user" | "assistant";
 	acpClient?: IAcpClient;
 	/** Callback to approve a permission request */
-	onApprovePermission?: (
-		requestId: string,
-		optionId: string,
-	) => Promise<void>;
+	onApprovePermission?: (requestId: string, optionId: string) => Promise<void>;
 }
 
 export function MessageContentRenderer({

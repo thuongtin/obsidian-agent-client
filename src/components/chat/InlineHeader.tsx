@@ -1,6 +1,6 @@
+import { DropdownComponent, setIcon } from "obsidian";
 import * as React from "react";
 import { useEffect, useRef } from "react";
-import { DropdownComponent, setIcon } from "obsidian";
 import { HeaderButton } from "./HeaderButton";
 
 // Agent info for display
@@ -140,9 +140,7 @@ export function InlineHeader({
 						/>
 					</div>
 				) : (
-					<span className="agent-client-agent-label">
-						{agentLabel}
-					</span>
+					<span className="agent-client-agent-label">{agentLabel}</span>
 				)}
 			</div>
 			{isUpdateAvailable && (
@@ -179,11 +177,7 @@ export function InlineHeader({
 					/>
 				)}
 				{variant === "floating" && onClose && (
-					<HeaderButton
-						iconName="x"
-						tooltip="Close"
-						onClick={onClose}
-					/>
+					<HeaderButton iconName="x" tooltip="Close" onClick={onClose} />
 				)}
 			</div>
 		</div>

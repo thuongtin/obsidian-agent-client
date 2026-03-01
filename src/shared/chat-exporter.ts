@@ -1,10 +1,10 @@
-import type AgentClientPlugin from "../plugin";
+import { TFile } from "obsidian";
 import type {
 	ChatMessage,
 	MessageContent,
 } from "../domain/models/chat-message";
-import { getLogger, Logger } from "./logger";
-import { TFile } from "obsidian";
+import type AgentClientPlugin from "../plugin";
+import { getLogger, type Logger } from "./logger";
 
 /**
  * Context for content conversion, tracking state across messages.
@@ -81,10 +81,7 @@ export class ChatExporter {
 				file = existingFile;
 			} else {
 				// File doesn't exist, create it
-				file = await this.plugin.app.vault.create(
-					filePath,
-					fullContent,
-				);
+				file = await this.plugin.app.vault.create(filePath, fullContent);
 			}
 
 			// Open the exported file if requested
@@ -147,8 +144,7 @@ export class ChatExporter {
 		const basePath = `${folderPath}/${baseFileName}.md`;
 
 		// Check if base file exists
-		const existingFile =
-			this.plugin.app.vault.getAbstractFileByPath(basePath);
+		const existingFile = this.plugin.app.vault.getAbstractFileByPath(basePath);
 
 		if (!(existingFile instanceof TFile)) {
 			// No existing file, use base path
@@ -195,8 +191,7 @@ export class ChatExporter {
 
 	private generateFileName(timestamp: Date): string {
 		const settings = this.plugin.settings.exportSettings;
-		const template =
-			settings.filenameTemplate || "agent_client_{date}_{time}";
+		const template = settings.filenameTemplate || "agent_client_{date}_{time}";
 
 		// Format date in local timezone: 20251115
 		const year = timestamp.getFullYear();
@@ -266,10 +261,7 @@ session_id: ${sessionId}${tagsLine}
 			markdown += `## ${timeStr} - ${role}\n\n`;
 
 			for (const content of message.content) {
-				markdown += await this.convertContentToMarkdown(
-					content,
-					context,
-				);
+				markdown += await this.convertContentToMarkdown(content, context);
 			}
 
 			markdown += "\n---\n\n";
@@ -349,9 +341,7 @@ session_id: ${sessionId}${tagsLine}
 					const fileName = attachmentPath.split("/").pop();
 					return `![[${fileName}]]\n\n`;
 				} catch (error) {
-					this.logger.error(
-						`Failed to save image as attachment: ${error}`,
-					);
+					this.logger.error(`Failed to save image as attachment: ${error}`);
 					// Fallback to base64 embedding
 					return `![Image](data:${content.mimeType};base64,${content.data})\n\n`;
 				}
@@ -369,9 +359,7 @@ session_id: ${sessionId}${tagsLine}
 		// Add locations if present
 		if (content.locations && content.locations.length > 0) {
 			const locationStrs = content.locations.map((loc) =>
-				loc.line != null
-					? `\`${loc.path}:${loc.line}\``
-					: `\`${loc.path}\``,
+				loc.line != null ? `\`${loc.path}:${loc.line}\`` : `\`${loc.path}\``,
 			);
 			md += `**Locations**: ${locationStrs.join(", ")}\n\n`;
 		}
@@ -488,9 +476,7 @@ session_id: ${sessionId}${tagsLine}
 			const existingFile =
 				this.plugin.app.vault.getAbstractFileByPath(attachmentPath);
 			if (existingFile instanceof TFile) {
-				this.logger.log(
-					`Image already exists, skipping: ${attachmentPath}`,
-				);
+				this.logger.log(`Image already exists, skipping: ${attachmentPath}`);
 				return attachmentPath;
 			}
 		} else {
@@ -506,13 +492,8 @@ session_id: ${sessionId}${tagsLine}
 			// or adds a suffix (e.g., "image_001 1.png") if it does exist.
 			if (!attachmentPath.endsWith(imageFileName)) {
 				// File exists - return the original path (without suffix)
-				const originalPath = attachmentPath.replace(
-					/ \d+(\.[^.]+)$/,
-					"$1",
-				);
-				this.logger.log(
-					`Image already exists, skipping: ${originalPath}`,
-				);
+				const originalPath = attachmentPath.replace(/ \d+(\.[^.]+)$/, "$1");
+				this.logger.log(`Image already exists, skipping: ${originalPath}`);
 				return originalPath;
 			}
 		}

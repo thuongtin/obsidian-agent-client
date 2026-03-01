@@ -126,6 +126,7 @@ export interface ChatMessage {
 	role: Role;
 	content: MessageContent[];
 	timestamp: Date;
+	status?: "queued" | "sending" | "sent" | "error";
 }
 
 /**

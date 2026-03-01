@@ -1,8 +1,10 @@
 import * as React from "react";
+
 const { useState, useRef, useEffect } = React;
+
 import type { IAcpClient } from "../../adapters/acp/acp.adapter";
-import { getLogger } from "../../shared/logger";
 import type AgentClientPlugin from "../../plugin";
+import { getLogger } from "../../shared/logger";
 
 interface TerminalRendererProps {
 	terminalId: string;
@@ -41,10 +43,7 @@ export function TerminalRenderer({
 					terminalId,
 					sessionId: "",
 				});
-				logger.log(
-					`[TerminalRenderer] Poll result for ${terminalId}:`,
-					result,
-				);
+				logger.log(`[TerminalRenderer] Poll result for ${terminalId}:`, result);
 				setOutput(result.output);
 				if (result.exitStatus) {
 					setExitStatus({

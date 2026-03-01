@@ -1,41 +1,42 @@
 import {
-	Plugin,
-	WorkspaceLeaf,
-	WorkspaceSplit,
 	Notice,
+	Plugin,
 	requestUrl,
+	type WorkspaceLeaf,
+	type WorkspaceSplit,
 } from "obsidian";
 import type { Root } from "react-dom/client";
 import * as semver from "semver";
-import { ChatView, VIEW_TYPE_CHAT } from "./components/chat/ChatView";
-import {
-	createFloatingChat,
-	FloatingViewContainer,
-} from "./components/chat/FloatingChatView";
-import { FloatingButtonContainer } from "./components/chat/FloatingButton";
-import { ChatViewRegistry } from "./shared/chat-view-registry";
+import { AcpAdapter } from "./adapters/acp/acp.adapter";
 import {
 	createSettingsStore,
 	type SettingsStore,
 } from "./adapters/obsidian/settings-store.adapter";
+import { ChatView, VIEW_TYPE_CHAT } from "./components/chat/ChatView";
+import { FloatingButtonContainer } from "./components/chat/FloatingButton";
+import {
+	createFloatingChat,
+	FloatingViewContainer,
+} from "./components/chat/FloatingChatView";
 import { AgentClientSettingTab } from "./components/settings/AgentClientSettingTab";
-import { AcpAdapter } from "./adapters/acp/acp.adapter";
-import {
-	sanitizeArgs,
-	normalizeEnvVars,
-	normalizeCustomAgent,
-	ensureUniqueCustomAgentIds,
-} from "./shared/settings-utils";
-import { parseChatFontSize } from "./shared/display-settings";
-import {
+import type {
 	AgentEnvVar,
-	GeminiAgentSettings,
 	ClaudeAgentSettings,
 	CodexAgentSettings,
 	CustomAgentSettings,
+	GeminiAgentSettings,
 } from "./domain/models/agent-config";
 import type { SavedSessionInfo } from "./domain/models/session-info";
-import { initializeLogger } from "./shared/logger";
+import { ChatViewRegistry } from "./shared/chat-view-registry";
+import { parseChatFontSize } from "./shared/display-settings";
+import { extractShellEnvironment } from "./shared/env-extractor";
+import { getLogger, initializeLogger } from "./shared/logger";
+import {
+	ensureUniqueCustomAgentIds,
+	normalizeCustomAgent,
+	normalizeEnvVars,
+	sanitizeArgs,
+} from "./shared/settings-utils";
 
 // Re-export for backward compatibility
 export type { AgentEnvVar, CustomAgentSettings };
@@ -180,6 +181,10 @@ export default class AgentClientPlugin extends Plugin {
 	/** Registry for all chat view containers (sidebar + floating) */
 	viewRegistry = new ChatViewRegistry();
 
+	/** Cache for OS shell environment to speed up agent spawning */
+	public cachedEnv: NodeJS.ProcessEnv | null = null;
+	public envPromise: Promise<NodeJS.ProcessEnv | null> | null = null;
+
 	/** Map of viewId to AcpAdapter for multi-session support */
 	private _adapters: Map<string, AcpAdapter> = new Map();
 	/** Floating button container (independent from chat view instances) */
@@ -196,6 +201,20 @@ export default class AgentClientPlugin extends Plugin {
 		await this.loadSettings();
 
 		initializeLogger(this.settings);
+
+		// Extract OS shell environment in the background to speed up subsequent agent spawns
+		this.envPromise = extractShellEnvironment(getLogger())
+			.then((env) => {
+				this.cachedEnv = env;
+				return env;
+			})
+			.catch((err) => {
+				getLogger().error(
+					"[EnvExtractor] Failed to extract environment during plugin load",
+					err,
+				);
+				return null;
+			});
 
 		// Initialize settings store
 		this.settingsStore = createSettingsStore(this.settings, this);
@@ -239,9 +258,7 @@ export default class AgentClientPlugin extends Plugin {
 			id: "open-new-chat-view",
 			name: "Open new chat view",
 			callback: () => {
-				void this.openNewChatViewWithAgent(
-					this.settings.defaultAgentId,
-				);
+				void this.openNewChatViewWithAgent(this.settings.defaultAgentId);
 			},
 		});
 
@@ -266,9 +283,7 @@ export default class AgentClientPlugin extends Plugin {
 					if (focused && focused.viewType === "floating") {
 						focused.expand();
 					} else {
-						this.expandFloatingChat(
-							instances[instances.length - 1],
-						);
+						this.expandFloatingChat(instances[instances.length - 1]);
 					}
 				}
 			},
@@ -404,9 +419,8 @@ export default class AgentClientPlugin extends Plugin {
 			const focusedId = this.lastActiveChatViewId;
 			if (focusedId) {
 				leaf =
-					leaves.find(
-						(l) => (l.view as ChatView)?.viewId === focusedId,
-					) || leaves[0];
+					leaves.find((l) => (l.view as ChatView)?.viewId === focusedId) ||
+					leaves[0];
 			} else {
 				leaf = leaves[0];
 			}
@@ -487,14 +501,11 @@ export default class AgentClientPlugin extends Plugin {
 	 */
 	private createSidebarTab(side: "right" | "left"): WorkspaceLeaf | null {
 		const { workspace } = this.app;
-		const split =
-			side === "right" ? workspace.rightSplit : workspace.leftSplit;
+		const split = side === "right" ? workspace.rightSplit : workspace.leftSplit;
 
 		// Find an existing chat leaf in this sidebar to get its tab group
 		const existingLeaves = workspace.getLeavesOfType(VIEW_TYPE_CHAT);
-		const sidebarLeaf = existingLeaves.find(
-			(leaf) => leaf.getRoot() === split,
-		);
+		const sidebarLeaf = existingLeaves.find((leaf) => leaf.getRoot() === split);
 
 		if (sidebarLeaf) {
 			const tabGroup = sidebarLeaf.parent;
@@ -613,8 +624,7 @@ export default class AgentClientPlugin extends Plugin {
 			},
 			{
 				id: this.settings.codex.id,
-				displayName:
-					this.settings.codex.displayName || this.settings.codex.id,
+				displayName: this.settings.codex.displayName || this.settings.codex.id,
 			},
 			{
 				id: this.settings.gemini.id,
@@ -667,8 +677,7 @@ export default class AgentClientPlugin extends Plugin {
 				// Only activate sidebar view if the focused view is a sidebar
 				// (avoid stealing focus from floating views)
 				const focusedId = this.lastActiveChatViewId;
-				const isFloatingFocused =
-					focusedId?.startsWith("floating-chat-");
+				const isFloatingFocused = focusedId?.startsWith("floating-chat-");
 				if (!isFloatingFocused) {
 					await this.activateView();
 				}
@@ -686,8 +695,7 @@ export default class AgentClientPlugin extends Plugin {
 				// Only activate sidebar view if the focused view is a sidebar
 				// (avoid stealing focus from floating views)
 				const focusedId = this.lastActiveChatViewId;
-				const isFloatingFocused =
-					focusedId?.startsWith("floating-chat-");
+				const isFloatingFocused = focusedId?.startsWith("floating-chat-");
 				if (!isFloatingFocused) {
 					await this.activateView();
 				}
@@ -705,8 +713,7 @@ export default class AgentClientPlugin extends Plugin {
 				// Only activate sidebar view if the focused view is a sidebar
 				// (avoid stealing focus from floating views)
 				const focusedId = this.lastActiveChatViewId;
-				const isFloatingFocused =
-					focusedId?.startsWith("floating-chat-");
+				const isFloatingFocused = focusedId?.startsWith("floating-chat-");
 				if (!isFloatingFocused) {
 					await this.activateView();
 				}
@@ -771,9 +778,7 @@ export default class AgentClientPlugin extends Plugin {
 			return;
 		}
 
-		const inputState = this.viewRegistry.toFocused((v) =>
-			v.getInputState(),
-		);
+		const inputState = this.viewRegistry.toFocused((v) => v.getInputState());
 		if (
 			!inputState ||
 			(inputState.text.trim() === "" && inputState.images.length === 0)
@@ -834,8 +839,7 @@ export default class AgentClientPlugin extends Plugin {
 		>;
 
 		const claudeFromRaw =
-			typeof rawSettings.claude === "object" &&
-			rawSettings.claude !== null
+			typeof rawSettings.claude === "object" && rawSettings.claude !== null
 				? (rawSettings.claude as Record<string, unknown>)
 				: {};
 		const codexFromRaw =
@@ -843,8 +847,7 @@ export default class AgentClientPlugin extends Plugin {
 				? (rawSettings.codex as Record<string, unknown>)
 				: {};
 		const geminiFromRaw =
-			typeof rawSettings.gemini === "object" &&
-			rawSettings.gemini !== null
+			typeof rawSettings.gemini === "object" && rawSettings.gemini !== null
 				? (rawSettings.gemini as Record<string, unknown>)
 				: {};
 
@@ -903,10 +906,8 @@ export default class AgentClientPlugin extends Plugin {
 					typeof claudeFromRaw.command === "string" &&
 					claudeFromRaw.command.trim().length > 0
 						? claudeFromRaw.command.trim()
-						: typeof rawSettings.claudeCodeAcpCommandPath ===
-									"string" &&
-							  rawSettings.claudeCodeAcpCommandPath.trim()
-									.length > 0
+						: typeof rawSettings.claudeCodeAcpCommandPath === "string" &&
+								rawSettings.claudeCodeAcpCommandPath.trim().length > 0
 							? rawSettings.claudeCodeAcpCommandPath.trim()
 							: DEFAULT_SETTINGS.claude.command,
 				args: resolvedClaudeArgs.length > 0 ? resolvedClaudeArgs : [],
@@ -947,7 +948,7 @@ export default class AgentClientPlugin extends Plugin {
 					geminiFromRaw.command.trim().length > 0
 						? geminiFromRaw.command.trim()
 						: typeof rawSettings.geminiCommandPath === "string" &&
-							  rawSettings.geminiCommandPath.trim().length > 0
+								rawSettings.geminiCommandPath.trim().length > 0
 							? rawSettings.geminiCommandPath.trim()
 							: DEFAULT_SETTINGS.gemini.command,
 				args:
@@ -988,23 +989,19 @@ export default class AgentClientPlugin extends Plugin {
 						filenameTemplate:
 							typeof rawExport.filenameTemplate === "string"
 								? rawExport.filenameTemplate
-								: DEFAULT_SETTINGS.exportSettings
-										.filenameTemplate,
+								: DEFAULT_SETTINGS.exportSettings.filenameTemplate,
 						autoExportOnNewChat:
 							typeof rawExport.autoExportOnNewChat === "boolean"
 								? rawExport.autoExportOnNewChat
-								: DEFAULT_SETTINGS.exportSettings
-										.autoExportOnNewChat,
+								: DEFAULT_SETTINGS.exportSettings.autoExportOnNewChat,
 						autoExportOnCloseChat:
 							typeof rawExport.autoExportOnCloseChat === "boolean"
 								? rawExport.autoExportOnCloseChat
-								: DEFAULT_SETTINGS.exportSettings
-										.autoExportOnCloseChat,
+								: DEFAULT_SETTINGS.exportSettings.autoExportOnCloseChat,
 						openFileAfterExport:
 							typeof rawExport.openFileAfterExport === "boolean"
 								? rawExport.openFileAfterExport
-								: DEFAULT_SETTINGS.exportSettings
-										.openFileAfterExport,
+								: DEFAULT_SETTINGS.exportSettings.openFileAfterExport,
 						includeImages:
 							typeof rawExport.includeImages === "boolean"
 								? rawExport.includeImages
@@ -1018,13 +1015,11 @@ export default class AgentClientPlugin extends Plugin {
 						imageCustomFolder:
 							typeof rawExport.imageCustomFolder === "string"
 								? rawExport.imageCustomFolder
-								: DEFAULT_SETTINGS.exportSettings
-										.imageCustomFolder,
+								: DEFAULT_SETTINGS.exportSettings.imageCustomFolder,
 						frontmatterTag:
 							typeof rawExport.frontmatterTag === "string"
 								? rawExport.frontmatterTag
-								: DEFAULT_SETTINGS.exportSettings
-										.frontmatterTag,
+								: DEFAULT_SETTINGS.exportSettings.frontmatterTag,
 					};
 				}
 				return DEFAULT_SETTINGS.exportSettings;
@@ -1059,26 +1054,22 @@ export default class AgentClientPlugin extends Plugin {
 						autoCollapseDiffs:
 							typeof rawDisplay.autoCollapseDiffs === "boolean"
 								? rawDisplay.autoCollapseDiffs
-								: DEFAULT_SETTINGS.displaySettings
-										.autoCollapseDiffs,
+								: DEFAULT_SETTINGS.displaySettings.autoCollapseDiffs,
 						diffCollapseThreshold:
-							typeof rawDisplay.diffCollapseThreshold ===
-								"number" && rawDisplay.diffCollapseThreshold > 0
+							typeof rawDisplay.diffCollapseThreshold === "number" &&
+							rawDisplay.diffCollapseThreshold > 0
 								? rawDisplay.diffCollapseThreshold
-								: DEFAULT_SETTINGS.displaySettings
-										.diffCollapseThreshold,
+								: DEFAULT_SETTINGS.displaySettings.diffCollapseThreshold,
 						maxNoteLength:
 							typeof rawDisplay.maxNoteLength === "number" &&
 							rawDisplay.maxNoteLength >= 1
 								? rawDisplay.maxNoteLength
-								: DEFAULT_SETTINGS.displaySettings
-										.maxNoteLength,
+								: DEFAULT_SETTINGS.displaySettings.maxNoteLength,
 						maxSelectionLength:
 							typeof rawDisplay.maxSelectionLength === "number" &&
 							rawDisplay.maxSelectionLength >= 1
 								? rawDisplay.maxSelectionLength
-								: DEFAULT_SETTINGS.displaySettings
-										.maxSelectionLength,
+								: DEFAULT_SETTINGS.displaySettings.maxSelectionLength,
 						showEmojis:
 							typeof rawDisplay.showEmojis === "boolean"
 								? rawDisplay.showEmojis
@@ -1204,9 +1195,7 @@ export default class AgentClientPlugin extends Plugin {
 
 		// Find the first prerelease (releases are sorted by date descending)
 		const latestPrerelease = releases.find((r) => r.prerelease);
-		return latestPrerelease
-			? semver.clean(latestPrerelease.tag_name)
-			: null;
+		return latestPrerelease ? semver.clean(latestPrerelease.tag_name) : null;
 	}
 
 	/**
@@ -1233,12 +1222,8 @@ export default class AgentClientPlugin extends Plugin {
 
 			if (hasNewerStable || hasNewerPrerelease) {
 				// Prefer stable version notification if available
-				const newestVersion = hasNewerStable
-					? latestStable
-					: latestPrerelease;
-				new Notice(
-					`[Agent Client] Update available: v${newestVersion}`,
-				);
+				const newestVersion = hasNewerStable ? latestStable : latestPrerelease;
+				new Notice(`[Agent Client] Update available: v${newestVersion}`);
 				return true;
 			}
 		} else {

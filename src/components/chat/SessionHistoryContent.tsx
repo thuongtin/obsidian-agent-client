@@ -1,5 +1,7 @@
 import * as React from "react";
+
 const { useState, useCallback } = React;
+
 import { setIcon } from "obsidian";
 import type { SessionInfo } from "../../domain/models/session-info";
 
@@ -242,9 +244,7 @@ function SessionItem({
 		<div className="agent-client-session-history-item">
 			<div className="agent-client-session-history-item-content">
 				<div className="agent-client-session-history-item-title">
-					<span>
-						{truncateTitle(session.title ?? "Untitled Session")}
-					</span>
+					<span>{truncateTitle(session.title ?? "Untitled Session")}</span>
 				</div>
 				<div className="agent-client-session-history-item-metadata">
 					{session.updatedAt && (
@@ -391,8 +391,7 @@ export function SessionHistoryContent({
 						Session list is not available for this agent.
 					</p>
 					<p className="agent-client-session-history-empty-text">
-						Enable Debug Mode in settings to manually enter session
-						IDs.
+						Enable Debug Mode in settings to manually enter session IDs.
 					</p>
 				</div>
 			)}
@@ -414,11 +413,7 @@ export function SessionHistoryContent({
 								<input
 									type="checkbox"
 									checked={hideNonLocalSessions}
-									onChange={(e) =>
-										setHideNonLocalSessions(
-											e.target.checked,
-										)
-									}
+									onChange={(e) => setHideNonLocalSessions(e.target.checked)}
 								/>
 								<span>Hide sessions without local data</span>
 							</label>
@@ -428,9 +423,7 @@ export function SessionHistoryContent({
 					{/* Error state */}
 					{error && (
 						<div className="agent-client-session-history-error">
-							<p className="agent-client-session-history-error-text">
-								{error}
-							</p>
+							<p className="agent-client-session-history-error-text">{error}</p>
 							<button
 								className="agent-client-session-history-retry-button"
 								onClick={handleRetry}

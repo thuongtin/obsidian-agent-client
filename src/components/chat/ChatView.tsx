@@ -1,30 +1,27 @@
-import { ItemView, WorkspaceLeaf, Platform, Notice, Menu } from "obsidian";
-import type {
-	IChatViewContainer,
-	ChatViewType,
-} from "../../domain/ports/chat-view-container.port";
+import { ItemView, Menu, Notice, Platform, type WorkspaceLeaf } from "obsidian";
 import * as React from "react";
+import type {
+	ChatViewType,
+	IChatViewContainer,
+} from "../../domain/ports/chat-view-container.port";
+
 const { useState, useRef, useEffect, useCallback } = React;
-import { createRoot, Root } from "react-dom/client";
 
-import type AgentClientPlugin from "../../plugin";
-import type { ChatInputState } from "../../domain/models/chat-input-state";
-
-// Component imports
-import { ChatHeader } from "./ChatHeader";
-import { ChatMessages } from "./ChatMessages";
-import { ChatInput } from "./ChatInput";
-// Utility imports
-import { getLogger, Logger } from "../../shared/logger";
-
+import { createRoot, type Root } from "react-dom/client";
 // Adapter imports
 import type { IAcpClient } from "../../adapters/acp/acp.adapter";
-
-// Hooks imports
-import { useChatController } from "../../hooks/useChatController";
-
+import type { ChatInputState } from "../../domain/models/chat-input-state";
 // Domain model imports
 import type { ImagePromptContent } from "../../domain/models/prompt-content";
+// Hooks imports
+import { useChatController } from "../../hooks/useChatController";
+import type AgentClientPlugin from "../../plugin";
+// Utility imports
+import { getLogger, type Logger } from "../../shared/logger";
+// Component imports
+import { ChatHeader } from "./ChatHeader";
+import { ChatInput } from "./ChatInput";
+import { ChatMessages } from "./ChatMessages";
 
 // Type definitions for Obsidian internal APIs
 interface AppWithSettings {
@@ -110,9 +107,7 @@ function ChatComponent({
 	// ============================================================
 	useEffect(() => {
 		const unsubscribe = view.onAgentIdRestored((agentId) => {
-			logger.log(
-				`[ChatView] Agent ID restored from workspace: ${agentId}`,
-			);
+			logger.log(`[ChatView] Agent ID restored from workspace: ${agentId}`);
 			setRestoredAgentId(agentId);
 		});
 		return unsubscribe;
@@ -184,7 +179,8 @@ function ChatComponent({
 
 			for (const agent of availableAgents) {
 				menu.addItem((item) => {
-					item.setTitle(agent.displayName)
+					item
+						.setTitle(agent.displayName)
 						.setChecked(agent.id === (session.agentId || ""))
 						.onClick(() => {
 							void handleNewChatWithPersist(agent.id);
@@ -196,7 +192,8 @@ function ChatComponent({
 
 			// -- Actions section --
 			menu.addItem((item) => {
-				item.setTitle("Open new view")
+				item
+					.setTitle("Open new view")
 					.setIcon("plus")
 					.onClick(() => {
 						void plugin.openNewChatViewWithAgent(
@@ -206,7 +203,8 @@ function ChatComponent({
 			});
 
 			menu.addItem((item) => {
-				item.setTitle("Restart agent")
+				item
+					.setTitle("Restart agent")
 					.setIcon("refresh-cw")
 					.onClick(() => {
 						void handleRestartAgent();
@@ -216,7 +214,8 @@ function ChatComponent({
 			menu.addSeparator();
 
 			menu.addItem((item) => {
-				item.setTitle("Plugin settings")
+				item
+					.setTitle("Plugin settings")
 					.setIcon("settings")
 					.onClick(() => {
 						handleOpenSettings();
@@ -256,13 +255,7 @@ function ChatComponent({
 		// Note: useChatController handles session creation, but we need to restart
 		// with the correct agent if it differs
 		void handleNewChat(restoredAgentId);
-	}, [
-		restoredAgentId,
-		session.state,
-		session.agentId,
-		logger,
-		handleNewChat,
-	]);
+	}, [restoredAgentId, session.state, session.agentId, logger, handleNewChat]);
 
 	// ============================================================
 	// Broadcast Command Callbacks
@@ -298,13 +291,11 @@ function ChatComponent({
 		}
 
 		// Convert attached images to ImagePromptContent format
-		const imagesToSend: ImagePromptContent[] = attachedImages.map(
-			(img) => ({
-				type: "image",
-				data: img.data,
-				mimeType: img.mimeType,
-			}),
-		);
+		const imagesToSend: ImagePromptContent[] = attachedImages.map((img) => ({
+			type: "image",
+			data: img.data,
+			mimeType: img.mimeType,
+		}));
 
 		// Clear input before sending
 		const messageToSend = inputValue.trim();
@@ -329,13 +320,9 @@ function ChatComponent({
 
 	/** Check if this view can send a message */
 	const canSendForBroadcast = useCallback((): boolean => {
-		const hasContent =
-			inputValue.trim() !== "" || attachedImages.length > 0;
+		const hasContent = inputValue.trim() !== "" || attachedImages.length > 0;
 		return (
-			hasContent &&
-			isSessionReady &&
-			!sessionHistory.loading &&
-			!isSending
+			hasContent && isSessionReady && !sessionHistory.loading && !isSending
 		);
 	}, [
 		inputValue,
@@ -449,23 +436,18 @@ function ChatComponent({
 					callback: CustomEventCallback,
 				) => ReturnType<typeof workspace.on>;
 			}
-		).on(
-			"agent-client:approve-active-permission",
-			(targetViewId?: string) => {
-				// Only respond if this view is the target (or no target specified)
-				if (targetViewId && targetViewId !== viewId) {
-					return;
+		).on("agent-client:approve-active-permission", (targetViewId?: string) => {
+			// Only respond if this view is the target (or no target specified)
+			if (targetViewId && targetViewId !== viewId) {
+				return;
+			}
+			void (async () => {
+				const success = await permission.approveActivePermission();
+				if (!success) {
+					new Notice("[Agent Client] No active permission request");
 				}
-				void (async () => {
-					const success = await permission.approveActivePermission();
-					if (!success) {
-						new Notice(
-							"[Agent Client] No active permission request",
-						);
-					}
-				})();
-			},
-		);
+			})();
+		});
 
 		const rejectRef = (
 			workspace as unknown as {
@@ -474,23 +456,18 @@ function ChatComponent({
 					callback: CustomEventCallback,
 				) => ReturnType<typeof workspace.on>;
 			}
-		).on(
-			"agent-client:reject-active-permission",
-			(targetViewId?: string) => {
-				// Only respond if this view is the target (or no target specified)
-				if (targetViewId && targetViewId !== viewId) {
-					return;
+		).on("agent-client:reject-active-permission", (targetViewId?: string) => {
+			// Only respond if this view is the target (or no target specified)
+			if (targetViewId && targetViewId !== viewId) {
+				return;
+			}
+			void (async () => {
+				const success = await permission.rejectActivePermission();
+				if (!success) {
+					new Notice("[Agent Client] No active permission request");
 				}
-				void (async () => {
-					const success = await permission.rejectActivePermission();
-					if (!success) {
-						new Notice(
-							"[Agent Client] No active permission request",
-						);
-					}
-				})();
-			},
-		);
+			})();
+		});
 
 		const cancelRef = (
 			workspace as unknown as {
@@ -531,10 +508,7 @@ function ChatComponent({
 			: undefined;
 
 	return (
-		<div
-			className="agent-client-chat-view-container"
-			style={chatFontSizeStyle}
-		>
+		<div className="agent-client-chat-view-container" style={chatFontSizeStyle}>
 			<ChatHeader
 				agentLabel={activeAgentLabel}
 				isUpdateAvailable={isUpdateAvailable}
@@ -550,6 +524,7 @@ function ChatComponent({
 				isSending={isSending}
 				isSessionReady={isSessionReady}
 				isRestoringSession={sessionHistory.loading}
+				isReconnecting={session.state === "reconnecting"}
 				agentLabel={activeAgentLabel}
 				plugin={plugin}
 				view={view}
@@ -561,6 +536,7 @@ function ChatComponent({
 				isSending={isSending}
 				isSessionReady={isSessionReady}
 				isRestoringSession={sessionHistory.loading}
+				isReconnecting={session.state === "reconnecting"}
 				agentLabel={activeAgentLabel}
 				availableCommands={session.availableCommands || []}
 				autoMentionEnabled={settings.autoMentionActiveNote}
@@ -617,8 +593,7 @@ export class ChatView extends ItemView implements IChatViewContainer {
 	/** Initial agent ID passed via state (for openNewChatViewWithAgent) */
 	private initialAgentId: string | null = null;
 	/** Callbacks to notify React when agentId is restored from workspace state */
-	private agentIdRestoredCallbacks: Set<(agentId: string) => void> =
-		new Set();
+	private agentIdRestoredCallbacks: Set<(agentId: string) => void> = new Set();
 
 	// Callbacks for input state access (broadcast commands)
 	private getDisplayNameCallback: GetDisplayNameCallback | null = null;
@@ -671,9 +646,7 @@ export class ChatView extends ItemView implements IChatViewContainer {
 
 		// Notify React when agentId is restored and differs from previous value
 		if (this.initialAgentId && this.initialAgentId !== previousAgentId) {
-			this.agentIdRestoredCallbacks.forEach((cb) =>
-				cb(this.initialAgentId!),
-			);
+			this.agentIdRestoredCallbacks.forEach((cb) => cb(this.initialAgentId!));
 		}
 	}
 
@@ -849,11 +822,7 @@ export class ChatView extends ItemView implements IChatViewContainer {
 
 		this.root = createRoot(container);
 		this.root.render(
-			<ChatComponent
-				plugin={this.plugin}
-				view={this}
-				viewId={this.viewId}
-			/>,
+			<ChatComponent plugin={this.plugin} view={this} viewId={this.viewId} />,
 		);
 
 		// Register with plugin's view registry

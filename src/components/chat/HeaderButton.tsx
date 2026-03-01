@@ -1,5 +1,7 @@
 import * as React from "react";
+
 const { useRef, useEffect, useImperativeHandle, forwardRef } = React;
+
 import { setIcon } from "obsidian";
 
 interface HeaderButtonProps {

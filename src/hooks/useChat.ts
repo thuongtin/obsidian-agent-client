@@ -1,18 +1,24 @@
-import { useState, useCallback, useMemo } from "react";
+import { Platform } from "obsidian";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { ErrorInfo } from "../domain/models/agent-error";
 import type {
 	ChatMessage,
 	MessageContent,
 } from "../domain/models/chat-message";
+import type { AuthenticationMethod } from "../domain/models/chat-session";
+import type { ImagePromptContent } from "../domain/models/prompt-content";
 import type { SessionUpdate } from "../domain/models/session-update";
 import type { IAgentClient } from "../domain/ports/agent-client.port";
-import type { IVaultAccess } from "../domain/ports/vault-access.port";
-import type { NoteMetadata } from "../domain/ports/vault-access.port";
-import type { AuthenticationMethod } from "../domain/models/chat-session";
-import type { ErrorInfo } from "../domain/models/agent-error";
-import type { ImagePromptContent } from "../domain/models/prompt-content";
+import type {
+	IVaultAccess,
+	NoteMetadata,
+} from "../domain/ports/vault-access.port";
 import type { IMentionService } from "../shared/mention-utils";
-import { preparePrompt, sendPreparedPrompt } from "../shared/message-service";
-import { Platform } from "obsidian";
+import {
+	type PreparePromptResult,
+	preparePrompt,
+	sendPreparedPrompt,
+} from "../shared/message-service";
 
 // ============================================================================
 // Types
@@ -53,10 +59,12 @@ export interface UseChatReturn {
 	 * @param content - Message content
 	 * @param options - Message options (activeNote, vaultBasePath, etc.)
 	 */
-	sendMessage: (
-		content: string,
-		options: SendMessageOptions,
-	) => Promise<void>;
+	sendMessage: (content: string, options: SendMessageOptions) => Promise<void>;
+
+	/**
+	 * Cancel the currently generating prompt via JSON RPC (session/cancel).
+	 */
+	cancelPrompt: () => Promise<void>;
 
 	/**
 	 * Clear all messages (e.g., when starting a new session).
@@ -166,9 +174,7 @@ function mergeToolCallContent(
 		// If new content contains diff, replace all old diffs
 		const hasDiff = newContent.some((item) => item.type === "diff");
 		if (hasDiff) {
-			mergedContent = mergedContent.filter(
-				(item) => item.type !== "diff",
-			);
+			mergedContent = mergedContent.filter((item) => item.type !== "diff");
 		}
 
 		mergedContent = [...mergedContent, ...newContent];
@@ -182,12 +188,9 @@ function mergeToolCallContent(
 		status: update.status !== undefined ? update.status : existing.status,
 		content: mergedContent,
 		locations:
-			update.locations !== undefined
-				? update.locations
-				: existing.locations,
+			update.locations !== undefined ? update.locations : existing.locations,
 		rawInput:
-			update.rawInput !== undefined &&
-			Object.keys(update.rawInput).length > 0
+			update.rawInput !== undefined && Object.keys(update.rawInput).length > 0
 				? update.rawInput
 				: existing.rawInput,
 		permissionRequest:
@@ -228,9 +231,96 @@ export function useChat(
 ): UseChatReturn {
 	// Message state
 	const [messages, setMessages] = useState<ChatMessage[]>([]);
+	const [promptQueue, setPromptQueue] = useState<
+		Array<{
+			messageId: string;
+			content: string;
+			prepared: PreparePromptResult;
+		}>
+	>([]);
 	const [isSending, setIsSending] = useState(false);
 	const [lastUserMessage, setLastUserMessage] = useState<string | null>(null);
 	const [errorInfo, setErrorInfo] = useState<ErrorInfo | null>(null);
+
+	/**
+	 * Process the prompt queue when the agent becomes idle.
+	 */
+	useEffect(() => {
+		if (!isSending && promptQueue.length > 0 && sessionContext.sessionId) {
+			const nextPrompt = promptQueue[0];
+
+			// Remove from queue
+			setPromptQueue((prev) => prev.slice(1));
+
+			// Update message status visually
+			setMessages((prev) =>
+				prev.map((m) =>
+					m.id === nextPrompt.messageId ? { ...m, status: "sending" } : m,
+				),
+			);
+
+			setIsSending(true);
+			setLastUserMessage(nextPrompt.content);
+
+			void sendPreparedPrompt(
+				{
+					sessionId: sessionContext.sessionId,
+					agentContent: nextPrompt.prepared.agentContent,
+					displayContent: nextPrompt.prepared.displayContent,
+					authMethods: sessionContext.authMethods,
+				},
+				agentClient,
+			)
+				.then((result) => {
+					if (result.success) {
+						setIsSending(false);
+						setLastUserMessage(null);
+						setMessages((prev) =>
+							prev.map((m) =>
+								m.id === nextPrompt.messageId ? { ...m, status: "sent" } : m,
+							),
+						);
+					} else {
+						setIsSending(false);
+						setMessages((prev) =>
+							prev.map((m) =>
+								m.id === nextPrompt.messageId ? { ...m, status: "error" } : m,
+							),
+						);
+						setErrorInfo(
+							result.error
+								? {
+										title: result.error.title,
+										message: result.error.message,
+										suggestion: result.error.suggestion,
+									}
+								: {
+										title: "Send Message Failed",
+										message: "Failed to send message",
+									},
+						);
+					}
+				})
+				.catch((error) => {
+					setIsSending(false);
+					setMessages((prev) =>
+						prev.map((m) =>
+							m.id === nextPrompt.messageId ? { ...m, status: "error" } : m,
+						),
+					);
+					setErrorInfo({
+						title: "Send Message Failed",
+						message: `Failed to send message: ${error instanceof Error ? error.message : String(error)}`,
+					});
+				});
+		}
+	}, [
+		isSending,
+		promptQueue,
+		sessionContext.sessionId,
+		sessionContext.authMethods,
+		agentClient,
+	]);
 
 	/**
 	 * Add a new message to the chat.
@@ -246,10 +336,7 @@ export function useChat(
 	const updateLastMessage = useCallback((content: MessageContent): void => {
 		setMessages((prev) => {
 			// If no messages or last message is not assistant, create new assistant message
-			if (
-				prev.length === 0 ||
-				prev[prev.length - 1].role !== "assistant"
-			) {
+			if (prev.length === 0 || prev[prev.length - 1].role !== "assistant") {
 				const newMessage: ChatMessage = {
 					id: crypto.randomUUID(),
 					role: "assistant",
@@ -269,8 +356,7 @@ export function useChat(
 					(c) => c.type === content.type,
 				);
 				if (existingContentIndex >= 0) {
-					const existingContent =
-						updatedMessage.content[existingContentIndex];
+					const existingContent = updatedMessage.content[existingContentIndex];
 					// Type guard: we know it's text or agent_thought from findIndex condition
 					if (
 						existingContent.type === "text" ||
@@ -330,8 +416,7 @@ export function useChat(
 					(c) => c.type === "text",
 				);
 				if (existingContentIndex >= 0) {
-					const existingContent =
-						updatedMessage.content[existingContentIndex];
+					const existingContent = updatedMessage.content[existingContentIndex];
 					if (existingContent.type === "text") {
 						updatedMessage.content[existingContentIndex] = {
 							type: "text",
@@ -369,10 +454,7 @@ export function useChat(
 				prev.map((message) => ({
 					...message,
 					content: message.content.map((c) => {
-						if (
-							c.type === "tool_call" &&
-							c.toolCallId === toolCallId
-						) {
+						if (c.type === "tool_call" && c.toolCallId === toolCallId) {
 							return mergeToolCallContent(c, content);
 						}
 						return c;
@@ -399,10 +481,7 @@ export function useChat(
 				const updated = prev.map((message) => ({
 					...message,
 					content: message.content.map((c) => {
-						if (
-							c.type === "tool_call" &&
-							c.toolCallId === toolCallId
-						) {
+						if (c.type === "tool_call" && c.toolCallId === toolCallId) {
 							found = true;
 							return mergeToolCallContent(c, content);
 						}
@@ -585,8 +664,7 @@ export function useChat(
 					isAutoMentionDisabled: options.isAutoMentionDisabled,
 					convertToWsl: shouldConvertToWsl,
 					supportsEmbeddedContext:
-						sessionContext.promptCapabilities?.embeddedContext ??
-						false,
+						sessionContext.promptCapabilities?.embeddedContext ?? false,
 					maxNoteLength: settingsContext.maxNoteLength,
 					maxSelectionLength: settingsContext.maxSelectionLength,
 				},
@@ -627,8 +705,22 @@ export function useChat(
 				role: "user",
 				content: userMessageContent,
 				timestamp: new Date(),
+				status: isSending ? "queued" : "sending",
 			};
 			addMessage(userMessage);
+
+			if (isSending) {
+				// Queue prompt instead of sending immediately
+				setPromptQueue((prev) => [
+					...prev,
+					{
+						messageId: userMessage.id,
+						content,
+						prepared,
+					},
+				]);
+				return;
+			}
 
 			// Phase 3: Set sending state and store original message
 			setIsSending(true);
@@ -650,9 +742,19 @@ export function useChat(
 					// Success - clear stored message
 					setIsSending(false);
 					setLastUserMessage(null);
+					setMessages((prev) =>
+						prev.map((m) =>
+							m.id === userMessage.id ? { ...m, status: "sent" } : m,
+						),
+					);
 				} else {
 					// Error from message-service
 					setIsSending(false);
+					setMessages((prev) =>
+						prev.map((m) =>
+							m.id === userMessage.id ? { ...m, status: "error" } : m,
+						),
+					);
 					setErrorInfo(
 						result.error
 							? {
@@ -669,6 +771,11 @@ export function useChat(
 			} catch (error) {
 				// Unexpected error
 				setIsSending(false);
+				setMessages((prev) =>
+					prev.map((m) =>
+						m.id === userMessage.id ? { ...m, status: "error" } : m,
+					),
+				);
 				setErrorInfo({
 					title: "Send Message Failed",
 					message: `Failed to send message: ${error instanceof Error ? error.message : String(error)}`,
@@ -687,12 +794,32 @@ export function useChat(
 		],
 	);
 
+	/**
+	 * Cancel the currently generating prompt.
+	 */
+	const cancelPrompt = useCallback(async (): Promise<void> => {
+		if (!sessionContext.sessionId) return;
+		try {
+			await agentClient.cancel(sessionContext.sessionId);
+			// We don't need to manually clear isSending here because
+			// the agent will eventually send a stop_reason = cancelled
+			// which should handle the state reset. But to be defensive,
+			// we could set it to false if needed.
+			// isSending is managed inside sendMessage when it awaits the result.
+			// When cancel triggers, the pending prompt might throw an abort error,
+			// which is caught in sendMessage and sets isSending(false).
+		} catch (error) {
+			console.error("[useChat] Failed to cancel prompt:", error);
+		}
+	}, [agentClient, sessionContext.sessionId]);
+
 	return {
 		messages,
 		isSending,
 		lastUserMessage,
 		errorInfo,
 		sendMessage,
+		cancelPrompt,
 		clearMessages,
 		setInitialMessages,
 		setMessagesFromLocal,

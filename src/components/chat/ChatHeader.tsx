@@ -1,4 +1,4 @@
-import * as React from "react";
+import type * as React from "react";
 import { HeaderButton } from "./HeaderButton";
 
 /**
@@ -41,9 +41,7 @@ export function ChatHeader({
 	return (
 		<div className="agent-client-chat-view-header">
 			<div className="agent-client-chat-view-header-main">
-				<h3 className="agent-client-chat-view-header-title">
-					{agentLabel}
-				</h3>
+				<h3 className="agent-client-chat-view-header-title">{agentLabel}</h3>
 			</div>
 			{isUpdateAvailable && (
 				<p className="agent-client-chat-view-header-update">
@@ -51,11 +49,7 @@ export function ChatHeader({
 				</p>
 			)}
 			<div className="agent-client-chat-view-header-actions">
-				<HeaderButton
-					iconName="plus"
-					tooltip="New chat"
-					onClick={onNewChat}
-				/>
+				<HeaderButton iconName="plus" tooltip="New chat" onClick={onNewChat} />
 				{onOpenHistory && (
 					<HeaderButton
 						iconName="history"

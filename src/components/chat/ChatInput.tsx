@@ -1,27 +1,28 @@
 import * as React from "react";
-const { useRef, useState, useEffect, useCallback } = React;
-import { setIcon, DropdownComponent, Notice } from "obsidian";
 
-import type AgentClientPlugin from "../../plugin";
-import type { IChatViewHost } from "./types";
-import type { NoteMetadata } from "../../domain/ports/vault-access.port";
+const { useRef, useState, useEffect, useCallback } = React;
+
+import { DropdownComponent, Notice, setIcon } from "obsidian";
+import type { ErrorInfo } from "../../domain/models/agent-error";
+import type { ChatMessage } from "../../domain/models/chat-message";
 import type {
-	SlashCommand,
-	SessionModeState,
 	SessionModelState,
+	SessionModeState,
+	SlashCommand,
 } from "../../domain/models/chat-session";
 import type { ImagePromptContent } from "../../domain/models/prompt-content";
-import type { UseMentionsReturn } from "../../hooks/useMentions";
-import type { UseSlashCommandsReturn } from "../../hooks/useSlashCommands";
+import type { NoteMetadata } from "../../domain/ports/vault-access.port";
 import type { UseAutoMentionReturn } from "../../hooks/useAutoMention";
-import type { ChatMessage } from "../../domain/models/chat-message";
-import { SuggestionDropdown } from "./SuggestionDropdown";
-import { ErrorOverlay } from "./ErrorOverlay";
-import { ImagePreviewStrip, type AttachedImage } from "./ImagePreviewStrip";
 import { useInputHistory } from "../../hooks/useInputHistory";
-import { getLogger } from "../../shared/logger";
-import type { ErrorInfo } from "../../domain/models/agent-error";
+import type { UseMentionsReturn } from "../../hooks/useMentions";
 import { useSettings } from "../../hooks/useSettings";
+import type { UseSlashCommandsReturn } from "../../hooks/useSlashCommands";
+import type AgentClientPlugin from "../../plugin";
+import { getLogger } from "../../shared/logger";
+import { ErrorOverlay } from "./ErrorOverlay";
+import { type AttachedImage, ImagePreviewStrip } from "./ImagePreviewStrip";
+import { SuggestionDropdown } from "./SuggestionDropdown";
+import type { IChatViewHost } from "./types";
 
 // ============================================================================
 // Image Constants
@@ -56,6 +57,8 @@ export interface ChatInputProps {
 	isSessionReady: boolean;
 	/** Whether a session is being restored (load/resume/fork) */
 	isRestoringSession: boolean;
+	/** Whether the session is currently reconnecting */
+	isReconnecting?: boolean;
 	/** Display name of the active agent */
 	agentLabel: string;
 	/** Available slash commands */
@@ -128,6 +131,7 @@ export function ChatInput({
 	isSending,
 	isSessionReady,
 	isRestoringSession,
+	isReconnecting,
 	agentLabel,
 	availableCommands,
 	autoMentionEnabled,
@@ -213,9 +217,7 @@ export function ChatInput({
 	 */
 	const removeImage = useCallback(
 		(id: string) => {
-			onAttachedImagesChange(
-				attachedImages.filter((img) => img.id !== id),
-			);
+			onAttachedImagesChange(attachedImages.filter((img) => img.id !== id));
 		},
 		[attachedImages, onAttachedImagesChange],
 	);
@@ -291,11 +293,7 @@ export function ChatInput({
 			// Extract image files from clipboard
 			const imageFiles: File[] = [];
 			for (const item of Array.from(items)) {
-				if (
-					SUPPORTED_IMAGE_TYPES.includes(
-						item.type as SupportedImageType,
-					)
-				) {
+				if (SUPPORTED_IMAGE_TYPES.includes(item.type as SupportedImageType)) {
 					const file = item.getAsFile();
 					if (file) imageFiles.push(file);
 				}
@@ -520,26 +518,19 @@ export function ChatInput({
 	);
 
 	/**
-	 * Handle sending or stopping based on current state.
+	 * Handle sending the current input as a message.
 	 */
-	const handleSendOrStop = useCallback(async () => {
-		if (isSending) {
-			await onStopGeneration();
-			return;
-		}
-
+	const handleSend = useCallback(async () => {
 		// Allow sending if there's text OR images
 		if (!inputValue.trim() && attachedImages.length === 0) return;
 
 		// Save input value and images before clearing
 		const messageToSend = inputValue.trim();
-		const imagesToSend: ImagePromptContent[] = attachedImages.map(
-			(img) => ({
-				type: "image",
-				data: img.data,
-				mimeType: img.mimeType,
-			}),
-		);
+		const imagesToSend: ImagePromptContent[] = attachedImages.map((img) => ({
+			type: "image",
+			data: img.data,
+			mimeType: img.mimeType,
+		}));
 
 		// Clear input, images, and hint state immediately
 		onInputChange("");
@@ -553,15 +544,24 @@ export function ChatInput({
 			imagesToSend.length > 0 ? imagesToSend : undefined,
 		);
 	}, [
-		isSending,
 		inputValue,
 		attachedImages,
 		onSendMessage,
-		onStopGeneration,
 		onInputChange,
 		onAttachedImagesChange,
 		resetHistory,
 	]);
+
+	/**
+	 * Handle the action button click (Send or Stop based on state).
+	 */
+	const handleActionButtonClick = useCallback(async () => {
+		if (isSending) {
+			await onStopGeneration();
+			return;
+		}
+		await handleSend();
+	}, [isSending, onStopGeneration, handleSend]);
 
 	/**
 	 * Handle dropdown keyboard navigation.
@@ -635,12 +635,11 @@ export function ChatInput({
 		[slashCommands, mentions, handleSelectSlashCommand, selectMention],
 	);
 
-	// Button disabled state - also allow sending if images are attached
 	const isButtonDisabled =
-		!isSending &&
 		((inputValue.trim() === "" && attachedImages.length === 0) ||
 			!isSessionReady ||
-			isRestoringSession);
+			isRestoringSession) &&
+		!isSending;
 
 	/**
 	 * Handle keyboard events in the textarea.
@@ -659,10 +658,7 @@ export function ChatInput({
 
 			// Normal input handling - check if should send based on shortcut setting
 			const hasCmdCtrl = e.metaKey || e.ctrlKey;
-			if (
-				e.key === "Enter" &&
-				(!e.nativeEvent.isComposing || hasCmdCtrl)
-			) {
+			if (e.key === "Enter" && (!e.nativeEvent.isComposing || hasCmdCtrl)) {
 				const shouldSend =
 					settings.sendMessageShortcut === "enter"
 						? !e.shiftKey // Enter mode: send unless Shift is pressed
@@ -670,19 +666,26 @@ export function ChatInput({
 
 				if (shouldSend) {
 					e.preventDefault();
-					if (!isButtonDisabled && !isSending) {
-						void handleSendOrStop();
+					// Enable keyboard sending even if isSending is true (for queueing)
+					// But protect against empty input / unready session
+					const canSendNow =
+						(inputValue.trim() !== "" || attachedImages.length > 0) &&
+						isSessionReady &&
+						!isRestoringSession;
+					if (canSendNow) {
+						void handleSend();
 					}
 				}
 				// If not shouldSend, allow default behavior (newline)
 			}
 		},
 		[
-			handleDropdownKeyPress,
 			handleHistoryKeyDown,
-			isSending,
-			isButtonDisabled,
-			handleSendOrStop,
+			inputValue,
+			attachedImages.length,
+			isSessionReady,
+			isRestoringSession,
+			handleSend,
 			settings.sendMessageShortcut,
 		],
 	);
@@ -695,12 +698,7 @@ export function ChatInput({
 			const newValue = e.target.value;
 			const cursorPosition = e.target.selectionStart || 0;
 
-			logger.log(
-				"[DEBUG] Input changed:",
-				newValue,
-				"cursor:",
-				cursorPosition,
-			);
+			logger.log("[DEBUG] Input changed:", newValue, "cursor:", cursorPosition);
 
 			onInputChange(newValue);
 
@@ -768,10 +766,8 @@ export function ChatInput({
 				window.setTimeout(() => {
 					if (textareaRef.current) {
 						textareaRef.current.focus();
-						textareaRef.current.selectionStart =
-							restoredMessage.length;
-						textareaRef.current.selectionEnd =
-							restoredMessage.length;
+						textareaRef.current.selectionStart = restoredMessage.length;
+						textareaRef.current.selectionEnd = restoredMessage.length;
 					}
 				}, 0);
 			}
@@ -902,7 +898,13 @@ export function ChatInput({
 	}, [currentModelId]);
 
 	// Placeholder text
-	const placeholder = `Message ${agentLabel} - @ to mention notes${availableCommands.length > 0 ? ", / for commands" : ""}`;
+	const placeholder = isRestoringSession
+		? "Restoring session..."
+		: isReconnecting
+			? "Reconnecting to agent..."
+			: !isSessionReady
+				? "Waiting for agent connection..."
+				: `Message ${agentLabel} - @ to mention notes${availableCommands.length > 0 ? ", / for commands" : ""}`;
 
 	return (
 		<div className="agent-client-chat-input-container">
@@ -960,23 +962,17 @@ export function ChatInput({
 							{autoMention.activeNote.selection && (
 								<span className="agent-client-selection-indicator">
 									{":"}
-									{autoMention.activeNote.selection.from
-										.line + 1}
-									-
-									{autoMention.activeNote.selection.to.line +
-										1}
+									{autoMention.activeNote.selection.from.line + 1}-
+									{autoMention.activeNote.selection.to.line + 1}
 								</span>
 							)}
 						</span>
 						<button
 							className="agent-client-auto-mention-toggle-btn"
 							onClick={(e) => {
-								const newDisabledState =
-									!autoMention.isDisabled;
+								const newDisabledState = !autoMention.isDisabled;
 								autoMention.toggle(newDisabledState);
-								const iconName = newDisabledState
-									? "x"
-									: "plus";
+								const iconName = newDisabledState ? "x" : "plus";
 								setIcon(e.currentTarget, iconName);
 							}}
 							title={
@@ -986,9 +982,7 @@ export function ChatInput({
 							}
 							ref={(el) => {
 								if (el) {
-									const iconName = autoMention.isDisabled
-										? "plus"
-										: "x";
+									const iconName = autoMention.isDisabled ? "plus" : "x";
 									setIcon(el, iconName);
 								}
 							}}
@@ -1010,26 +1004,16 @@ export function ChatInput({
 						spellCheck={obsidianSpellcheck}
 					/>
 					{hintText && (
-						<div
-							className="agent-client-hint-overlay"
-							aria-hidden="true"
-						>
-							<span className="agent-client-invisible">
-								{commandText}
-							</span>
-							<span className="agent-client-hint-text">
-								{hintText}
-							</span>
+						<div className="agent-client-hint-overlay" aria-hidden="true">
+							<span className="agent-client-invisible">{commandText}</span>
+							<span className="agent-client-hint-text">{hintText}</span>
 						</div>
 					)}
 				</div>
 
 				{/* Image Preview Strip (only shown when agent supports images) */}
 				{supportsImages && (
-					<ImagePreviewStrip
-						images={attachedImages}
-						onRemove={removeImage}
-					/>
+					<ImagePreviewStrip images={attachedImages} onRemove={removeImage} />
 				)}
 
 				{/* Input Actions (Mode Selector + Model Selector + Send Button) */}
@@ -1039,9 +1023,8 @@ export function ChatInput({
 						<div
 							className="agent-client-mode-selector"
 							title={
-								modes.availableModes.find(
-									(m) => m.id === modes.currentModeId,
-								)?.description ?? "Select mode"
+								modes.availableModes.find((m) => m.id === modes.currentModeId)
+									?.description ?? "Select mode"
 							}
 						>
 							<div ref={modeDropdownRef} />
@@ -1077,15 +1060,17 @@ export function ChatInput({
 					{/* Send/Stop Button */}
 					<button
 						ref={sendButtonRef}
-						onClick={() => void handleSendOrStop()}
+						onClick={() => void handleActionButtonClick()}
 						disabled={isButtonDisabled}
 						className={`agent-client-chat-send-button ${isSending ? "sending" : ""} ${isButtonDisabled ? "agent-client-disabled" : ""}`}
 						title={
-							!isSessionReady
-								? "Connecting..."
-								: isSending
-									? "Stop generation"
-									: "Send message"
+							isReconnecting
+								? "Reconnecting..."
+								: !isSessionReady
+									? "Connecting..."
+									: isSending
+										? "Stop generation"
+										: "Send message"
 						}
 					></button>
 				</div>

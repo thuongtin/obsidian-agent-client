@@ -1,22 +1,22 @@
 import {
-	App,
+	type App,
+	type DropdownComponent,
+	Platform,
 	PluginSettingTab,
 	Setting,
-	DropdownComponent,
-	Platform,
 } from "obsidian";
 import type AgentClientPlugin from "../../plugin";
 import type {
-	CustomAgentSettings,
 	AgentEnvVar,
 	ChatViewLocation,
+	CustomAgentSettings,
 } from "../../plugin";
-import { normalizeEnvVars } from "../../shared/settings-utils";
 import {
 	CHAT_FONT_SIZE_MAX,
 	CHAT_FONT_SIZE_MIN,
 	parseChatFontSize,
 } from "../../shared/display-settings";
+import { normalizeEnvVars } from "../../shared/settings-utils";
 
 export class AgentClientSettingTab extends PluginSettingTab {
 	plugin: AgentClientPlugin;
@@ -71,7 +71,8 @@ export class AgentClientSettingTab extends PluginSettingTab {
 				'Absolute path to Node.js executable. On macOS/Linux, use "which node", and on Windows, use "where node" to find it.',
 			)
 			.addText((text) => {
-				text.setPlaceholder("Absolute path to node")
+				text
+					.setPlaceholder("Absolute path to node")
 					.setValue(this.plugin.settings.nodePath)
 					.onChange(async (value) => {
 						this.plugin.settings.nodePath = value.trim();
@@ -86,14 +87,8 @@ export class AgentClientSettingTab extends PluginSettingTab {
 			)
 			.addDropdown((dropdown) =>
 				dropdown
-					.addOption(
-						"enter",
-						"Enter to send, Shift+Enter for newline",
-					)
-					.addOption(
-						"cmd-enter",
-						"Cmd/Ctrl+Enter to send, Enter for newline",
-					)
+					.addOption("enter", "Enter to send, Shift+Enter for newline")
+					.addOption("cmd-enter", "Cmd/Ctrl+Enter to send, Enter for newline")
 					.setValue(this.plugin.settings.sendMessageShortcut)
 					.onChange(async (value) => {
 						this.plugin.settings.sendMessageShortcut = value as
@@ -131,16 +126,11 @@ export class AgentClientSettingTab extends PluginSettingTab {
 			.addText((text) =>
 				text
 					.setPlaceholder("10000")
-					.setValue(
-						String(
-							this.plugin.settings.displaySettings.maxNoteLength,
-						),
-					)
+					.setValue(String(this.plugin.settings.displaySettings.maxNoteLength))
 					.onChange(async (value) => {
 						const num = parseInt(value, 10);
 						if (!isNaN(num) && num >= 1) {
-							this.plugin.settings.displaySettings.maxNoteLength =
-								num;
+							this.plugin.settings.displaySettings.maxNoteLength = num;
 							await this.plugin.saveSettings();
 						}
 					}),
@@ -155,16 +145,12 @@ export class AgentClientSettingTab extends PluginSettingTab {
 				text
 					.setPlaceholder("10000")
 					.setValue(
-						String(
-							this.plugin.settings.displaySettings
-								.maxSelectionLength,
-						),
+						String(this.plugin.settings.displaySettings.maxSelectionLength),
 					)
 					.onChange(async (value) => {
 						const num = parseInt(value, 10);
 						if (!isNaN(num) && num >= 1) {
-							this.plugin.settings.displaySettings.maxSelectionLength =
-								num;
+							this.plugin.settings.displaySettings.maxSelectionLength = num;
 							await this.plugin.saveSettings();
 						}
 					}),
@@ -187,8 +173,7 @@ export class AgentClientSettingTab extends PluginSettingTab {
 					.addOption("editor-split", "Editor area (split)")
 					.setValue(this.plugin.settings.chatViewLocation)
 					.onChange(async (value) => {
-						this.plugin.settings.chatViewLocation =
-							value as ChatViewLocation;
+						this.plugin.settings.chatViewLocation = value as ChatViewLocation;
 						await this.plugin.saveSettings();
 					}),
 			);
@@ -200,20 +185,14 @@ export class AgentClientSettingTab extends PluginSettingTab {
 			)
 			.addText((text) => {
 				const getCurrentDisplayValue = (): string => {
-					const currentFontSize =
-						this.plugin.settings.displaySettings.fontSize;
-					return currentFontSize === null
-						? ""
-						: String(currentFontSize);
+					const currentFontSize = this.plugin.settings.displaySettings.fontSize;
+					return currentFontSize === null ? "" : String(currentFontSize);
 				};
 
 				const persistChatFontSize = async (
 					fontSize: number | null,
 				): Promise<void> => {
-					if (
-						this.plugin.settings.displaySettings.fontSize ===
-						fontSize
-					) {
+					if (this.plugin.settings.displaySettings.fontSize === fontSize) {
 						return;
 					}
 
@@ -227,9 +206,8 @@ export class AgentClientSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettingsAndNotify(nextSettings);
 				};
 
-				text.setPlaceholder(
-					`${CHAT_FONT_SIZE_MIN}-${CHAT_FONT_SIZE_MAX}`,
-				)
+				text
+					.setPlaceholder(`${CHAT_FONT_SIZE_MIN}-${CHAT_FONT_SIZE_MAX}`)
 					.setValue(getCurrentDisplayValue())
 					.onChange(async (value) => {
 						if (value.trim().length === 0) {
@@ -256,8 +234,7 @@ export class AgentClientSettingTab extends PluginSettingTab {
 						}
 
 						const hasChanged =
-							this.plugin.settings.displaySettings.fontSize !==
-							parsedFontSize;
+							this.plugin.settings.displaySettings.fontSize !== parsedFontSize;
 						if (hasChanged) {
 							await persistChatFontSize(parsedFontSize);
 						}
@@ -267,10 +244,7 @@ export class AgentClientSettingTab extends PluginSettingTab {
 					const currentInputValue = text.getValue();
 					const parsedFontSize = parseChatFontSize(currentInputValue);
 
-					if (
-						currentInputValue.trim().length > 0 &&
-						parsedFontSize === null
-					) {
+					if (currentInputValue.trim().length > 0 && parsedFontSize === null) {
 						text.setValue(getCurrentDisplayValue());
 						return;
 					}
@@ -278,8 +252,7 @@ export class AgentClientSettingTab extends PluginSettingTab {
 					if (parsedFontSize !== null) {
 						text.setValue(String(parsedFontSize));
 						const hasChanged =
-							this.plugin.settings.displaySettings.fontSize !==
-							parsedFontSize;
+							this.plugin.settings.displaySettings.fontSize !== parsedFontSize;
 						if (hasChanged) {
 							void persistChatFontSize(parsedFontSize);
 						}
@@ -306,17 +279,12 @@ export class AgentClientSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Auto-collapse long diffs")
-			.setDesc(
-				"Automatically collapse diffs that exceed the line threshold.",
-			)
+			.setDesc("Automatically collapse diffs that exceed the line threshold.")
 			.addToggle((toggle) =>
 				toggle
-					.setValue(
-						this.plugin.settings.displaySettings.autoCollapseDiffs,
-					)
+					.setValue(this.plugin.settings.displaySettings.autoCollapseDiffs)
 					.onChange(async (value) => {
-						this.plugin.settings.displaySettings.autoCollapseDiffs =
-							value;
+						this.plugin.settings.displaySettings.autoCollapseDiffs = value;
 						await this.plugin.saveSettings();
 						this.display();
 					}),
@@ -333,8 +301,7 @@ export class AgentClientSettingTab extends PluginSettingTab {
 						.setPlaceholder("10")
 						.setValue(
 							String(
-								this.plugin.settings.displaySettings
-									.diffCollapseThreshold,
+								this.plugin.settings.displaySettings.diffCollapseThreshold,
 							),
 						)
 						.onChange(async (value) => {
@@ -363,8 +330,7 @@ export class AgentClientSettingTab extends PluginSettingTab {
 				toggle
 					.setValue(this.plugin.settings.showFloatingButton)
 					.onChange(async (value) => {
-						const wasEnabled =
-							this.plugin.settings.showFloatingButton;
+						const wasEnabled = this.plugin.settings.showFloatingButton;
 						this.plugin.settings.showFloatingButton = value;
 						await this.plugin.saveSettings();
 
@@ -374,8 +340,7 @@ export class AgentClientSettingTab extends PluginSettingTab {
 							this.plugin.openNewFloatingChat();
 						} else if (!value && wasEnabled) {
 							// Turning OFF: close all floating chat instances
-							const instances =
-								this.plugin.getFloatingChatInstances();
+							const instances = this.plugin.getFloatingChatInstances();
 							for (const instanceId of instances) {
 								this.plugin.closeFloatingChat(instanceId);
 							}
@@ -451,10 +416,7 @@ export class AgentClientSettingTab extends PluginSettingTab {
 					.addText((text) =>
 						text
 							.setPlaceholder("Leave empty for default")
-							.setValue(
-								this.plugin.settings.windowsWslDistribution ||
-									"",
-							)
+							.setValue(this.plugin.settings.windowsWslDistribution || "")
 							.onChange(async (value) => {
 								this.plugin.settings.windowsWslDistribution =
 									value.trim() || undefined;
@@ -492,8 +454,7 @@ export class AgentClientSettingTab extends PluginSettingTab {
 					.setPlaceholder("Agent Client")
 					.setValue(this.plugin.settings.exportSettings.defaultFolder)
 					.onChange(async (value) => {
-						this.plugin.settings.exportSettings.defaultFolder =
-							value;
+						this.plugin.settings.exportSettings.defaultFolder = value;
 						await this.plugin.saveSettings();
 					}),
 			);
@@ -506,12 +467,9 @@ export class AgentClientSettingTab extends PluginSettingTab {
 			.addText((text) =>
 				text
 					.setPlaceholder("agent_client_{date}_{time}")
-					.setValue(
-						this.plugin.settings.exportSettings.filenameTemplate,
-					)
+					.setValue(this.plugin.settings.exportSettings.filenameTemplate)
 					.onChange(async (value) => {
-						this.plugin.settings.exportSettings.filenameTemplate =
-							value;
+						this.plugin.settings.exportSettings.filenameTemplate = value;
 						await this.plugin.saveSettings();
 					}),
 			);
@@ -524,12 +482,9 @@ export class AgentClientSettingTab extends PluginSettingTab {
 			.addText((text) =>
 				text
 					.setPlaceholder("agent-client")
-					.setValue(
-						this.plugin.settings.exportSettings.frontmatterTag,
-					)
+					.setValue(this.plugin.settings.exportSettings.frontmatterTag)
 					.onChange(async (value) => {
-						this.plugin.settings.exportSettings.frontmatterTag =
-							value;
+						this.plugin.settings.exportSettings.frontmatterTag = value;
 						await this.plugin.saveSettings();
 					}),
 			);
@@ -541,8 +496,7 @@ export class AgentClientSettingTab extends PluginSettingTab {
 				toggle
 					.setValue(this.plugin.settings.exportSettings.includeImages)
 					.onChange(async (value) => {
-						this.plugin.settings.exportSettings.includeImages =
-							value;
+						this.plugin.settings.exportSettings.includeImages = value;
 						await this.plugin.saveSettings();
 						this.display();
 					}),
@@ -554,44 +508,30 @@ export class AgentClientSettingTab extends PluginSettingTab {
 				.setDesc("Where to save exported images")
 				.addDropdown((dropdown) =>
 					dropdown
-						.addOption(
-							"obsidian",
-							"Use Obsidian's attachment setting",
-						)
+						.addOption("obsidian", "Use Obsidian's attachment setting")
 						.addOption("custom", "Save to custom folder")
-						.addOption(
-							"base64",
-							"Embed as Base64 (not recommended)",
-						)
-						.setValue(
-							this.plugin.settings.exportSettings.imageLocation,
-						)
+						.addOption("base64", "Embed as Base64 (not recommended)")
+						.setValue(this.plugin.settings.exportSettings.imageLocation)
 						.onChange(async (value) => {
-							this.plugin.settings.exportSettings.imageLocation =
-								value as "obsidian" | "custom" | "base64";
+							this.plugin.settings.exportSettings.imageLocation = value as
+								| "obsidian"
+								| "custom"
+								| "base64";
 							await this.plugin.saveSettings();
 							this.display();
 						}),
 				);
 
-			if (
-				this.plugin.settings.exportSettings.imageLocation === "custom"
-			) {
+			if (this.plugin.settings.exportSettings.imageLocation === "custom") {
 				new Setting(containerEl)
 					.setName("Custom image folder")
-					.setDesc(
-						"Folder path for exported images (relative to vault root)",
-					)
+					.setDesc("Folder path for exported images (relative to vault root)")
 					.addText((text) =>
 						text
 							.setPlaceholder("Agent Client")
-							.setValue(
-								this.plugin.settings.exportSettings
-									.imageCustomFolder,
-							)
+							.setValue(this.plugin.settings.exportSettings.imageCustomFolder)
 							.onChange(async (value) => {
-								this.plugin.settings.exportSettings.imageCustomFolder =
-									value;
+								this.plugin.settings.exportSettings.imageCustomFolder = value;
 								await this.plugin.saveSettings();
 							}),
 					);
@@ -600,17 +540,12 @@ export class AgentClientSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Auto-export on new chat")
-			.setDesc(
-				"Automatically export the current chat when starting a new chat",
-			)
+			.setDesc("Automatically export the current chat when starting a new chat")
 			.addToggle((toggle) =>
 				toggle
-					.setValue(
-						this.plugin.settings.exportSettings.autoExportOnNewChat,
-					)
+					.setValue(this.plugin.settings.exportSettings.autoExportOnNewChat)
 					.onChange(async (value) => {
-						this.plugin.settings.exportSettings.autoExportOnNewChat =
-							value;
+						this.plugin.settings.exportSettings.autoExportOnNewChat = value;
 						await this.plugin.saveSettings();
 					}),
 			);
@@ -622,13 +557,9 @@ export class AgentClientSettingTab extends PluginSettingTab {
 			)
 			.addToggle((toggle) =>
 				toggle
-					.setValue(
-						this.plugin.settings.exportSettings
-							.autoExportOnCloseChat,
-					)
+					.setValue(this.plugin.settings.exportSettings.autoExportOnCloseChat)
 					.onChange(async (value) => {
-						this.plugin.settings.exportSettings.autoExportOnCloseChat =
-							value;
+						this.plugin.settings.exportSettings.autoExportOnCloseChat = value;
 						await this.plugin.saveSettings();
 					}),
 			);
@@ -638,12 +569,9 @@ export class AgentClientSettingTab extends PluginSettingTab {
 			.setDesc("Automatically open the exported note after exporting")
 			.addToggle((toggle) =>
 				toggle
-					.setValue(
-						this.plugin.settings.exportSettings.openFileAfterExport,
-					)
+					.setValue(this.plugin.settings.exportSettings.openFileAfterExport)
 					.onChange(async (value) => {
-						this.plugin.settings.exportSettings.openFileAfterExport =
-							value;
+						this.plugin.settings.exportSettings.openFileAfterExport = value;
 						await this.plugin.saveSettings();
 					}),
 			);
@@ -748,8 +676,7 @@ export class AgentClientSettingTab extends PluginSettingTab {
 			),
 			toOption(
 				this.plugin.settings.codex.id,
-				this.plugin.settings.codex.displayName ||
-					this.plugin.settings.codex.id,
+				this.plugin.settings.codex.displayName || this.plugin.settings.codex.id,
 			),
 			toOption(
 				this.plugin.settings.gemini.id,
@@ -789,7 +716,8 @@ export class AgentClientSettingTab extends PluginSettingTab {
 				"Gemini API key. Required if not logging in with a Google account. (Stored as plain text)",
 			)
 			.addText((text) => {
-				text.setPlaceholder("Enter your Gemini API key")
+				text
+					.setPlaceholder("Enter your Gemini API key")
 					.setValue(gemini.apiKey)
 					.onChange(async (value) => {
 						this.plugin.settings.gemini.apiKey = value.trim();
@@ -804,7 +732,8 @@ export class AgentClientSettingTab extends PluginSettingTab {
 				'Absolute path to the Gemini CLI. On macOS/Linux, use "which gemini", and on Windows, use "where gemini" to find it.',
 			)
 			.addText((text) => {
-				text.setPlaceholder("Absolute path to gemini")
+				text
+					.setPlaceholder("Absolute path to gemini")
 					.setValue(gemini.command)
 					.onChange(async (value) => {
 						this.plugin.settings.gemini.command = value.trim();
@@ -818,11 +747,11 @@ export class AgentClientSettingTab extends PluginSettingTab {
 				'Enter one argument per line. Leave empty to run without arguments.(Currently, the Gemini CLI requires the "--experimental-acp" option.)',
 			)
 			.addTextArea((text) => {
-				text.setPlaceholder("")
+				text
+					.setPlaceholder("")
 					.setValue(this.formatArgs(gemini.args))
 					.onChange(async (value) => {
-						this.plugin.settings.gemini.args =
-							this.parseArgs(value);
+						this.plugin.settings.gemini.args = this.parseArgs(value);
 						await this.plugin.saveSettings();
 					});
 				text.inputEl.rows = 3;
@@ -834,7 +763,8 @@ export class AgentClientSettingTab extends PluginSettingTab {
 				"Enter KEY=VALUE pairs, one per line. Required to authenticate with Vertex AI. GEMINI_API_KEY is derived from the field above.(Stored as plain text)",
 			)
 			.addTextArea((text) => {
-				text.setPlaceholder("GOOGLE_CLOUD_PROJECT=...")
+				text
+					.setPlaceholder("GOOGLE_CLOUD_PROJECT=...")
 					.setValue(this.formatEnv(gemini.env))
 					.onChange(async (value) => {
 						this.plugin.settings.gemini.env = this.parseEnv(value);
@@ -857,7 +787,8 @@ export class AgentClientSettingTab extends PluginSettingTab {
 				"Anthropic API key. Required if not logging in with an Anthropic account. (Stored as plain text)",
 			)
 			.addText((text) => {
-				text.setPlaceholder("Enter your Anthropic API key")
+				text
+					.setPlaceholder("Enter your Anthropic API key")
 					.setValue(claude.apiKey)
 					.onChange(async (value) => {
 						this.plugin.settings.claude.apiKey = value.trim();
@@ -872,7 +803,8 @@ export class AgentClientSettingTab extends PluginSettingTab {
 				'Absolute path to the claude-agent-acp. On macOS/Linux, use "which claude-agent-acp", and on Windows, use "where claude-agent-acp" to find it.',
 			)
 			.addText((text) => {
-				text.setPlaceholder("Absolute path to claude-agent-acp")
+				text
+					.setPlaceholder("Absolute path to claude-agent-acp")
 					.setValue(claude.command)
 					.onChange(async (value) => {
 						this.plugin.settings.claude.command = value.trim();
@@ -886,11 +818,11 @@ export class AgentClientSettingTab extends PluginSettingTab {
 				"Enter one argument per line. Leave empty to run without arguments.",
 			)
 			.addTextArea((text) => {
-				text.setPlaceholder("")
+				text
+					.setPlaceholder("")
 					.setValue(this.formatArgs(claude.args))
 					.onChange(async (value) => {
-						this.plugin.settings.claude.args =
-							this.parseArgs(value);
+						this.plugin.settings.claude.args = this.parseArgs(value);
 						await this.plugin.saveSettings();
 					});
 				text.inputEl.rows = 3;
@@ -902,7 +834,8 @@ export class AgentClientSettingTab extends PluginSettingTab {
 				"Enter KEY=VALUE pairs, one per line. ANTHROPIC_API_KEY is derived from the field above.",
 			)
 			.addTextArea((text) => {
-				text.setPlaceholder("")
+				text
+					.setPlaceholder("")
 					.setValue(this.formatEnv(claude.env))
 					.onChange(async (value) => {
 						this.plugin.settings.claude.env = this.parseEnv(value);
@@ -915,9 +848,7 @@ export class AgentClientSettingTab extends PluginSettingTab {
 	private renderCodexSettings(sectionEl: HTMLElement) {
 		const codex = this.plugin.settings.codex;
 
-		new Setting(sectionEl)
-			.setName(codex.displayName || "Codex")
-			.setHeading();
+		new Setting(sectionEl).setName(codex.displayName || "Codex").setHeading();
 
 		new Setting(sectionEl)
 			.setName("API key")
@@ -925,7 +856,8 @@ export class AgentClientSettingTab extends PluginSettingTab {
 				"OpenAI API key. Required if not logging in with an OpenAI account. (Stored as plain text)",
 			)
 			.addText((text) => {
-				text.setPlaceholder("Enter your OpenAI API key")
+				text
+					.setPlaceholder("Enter your OpenAI API key")
 					.setValue(codex.apiKey)
 					.onChange(async (value) => {
 						this.plugin.settings.codex.apiKey = value.trim();
@@ -940,7 +872,8 @@ export class AgentClientSettingTab extends PluginSettingTab {
 				'Absolute path to the codex-acp. On macOS/Linux, use "which codex-acp", and on Windows, use "where codex-acp" to find it.',
 			)
 			.addText((text) => {
-				text.setPlaceholder("Absolute path to codex-acp")
+				text
+					.setPlaceholder("Absolute path to codex-acp")
 					.setValue(codex.command)
 					.onChange(async (value) => {
 						this.plugin.settings.codex.command = value.trim();
@@ -954,7 +887,8 @@ export class AgentClientSettingTab extends PluginSettingTab {
 				"Enter one argument per line. Leave empty to run without arguments.",
 			)
 			.addTextArea((text) => {
-				text.setPlaceholder("")
+				text
+					.setPlaceholder("")
 					.setValue(this.formatArgs(codex.args))
 					.onChange(async (value) => {
 						this.plugin.settings.codex.args = this.parseArgs(value);
@@ -969,7 +903,8 @@ export class AgentClientSettingTab extends PluginSettingTab {
 				"Enter KEY=VALUE pairs, one per line. OPENAI_API_KEY is derived from the field above.",
 			)
 			.addTextArea((text) => {
-				text.setPlaceholder("")
+				text
+					.setPlaceholder("")
 					.setValue(this.formatEnv(codex.env))
 					.onChange(async (value) => {
 						this.plugin.settings.codex.env = this.parseEnv(value);
@@ -996,8 +931,7 @@ export class AgentClientSettingTab extends PluginSettingTab {
 				.setCta()
 				.onClick(async () => {
 					const newId = this.generateCustomAgentId();
-					const newDisplayName =
-						this.generateCustomAgentDisplayName();
+					const newDisplayName = this.generateCustomAgentDisplayName();
 					this.plugin.settings.customAgents.push({
 						id: newId,
 						displayName: newDisplayName,
@@ -1025,11 +959,11 @@ export class AgentClientSettingTab extends PluginSettingTab {
 			.setName("Agent ID")
 			.setDesc("Unique identifier used to reference this agent.")
 			.addText((text) => {
-				text.setPlaceholder("custom-agent")
+				text
+					.setPlaceholder("custom-agent")
 					.setValue(agent.id)
 					.onChange(async (value) => {
-						const previousId =
-							this.plugin.settings.customAgents[index].id;
+						const previousId = this.plugin.settings.customAgents[index].id;
 						const trimmed = value.trim();
 						let nextId = trimmed;
 						if (nextId.length === 0) {
@@ -1037,9 +971,7 @@ export class AgentClientSettingTab extends PluginSettingTab {
 							text.setValue(nextId);
 						}
 						this.plugin.settings.customAgents[index].id = nextId;
-						if (
-							this.plugin.settings.defaultAgentId === previousId
-						) {
+						if (this.plugin.settings.defaultAgentId === previousId) {
 							this.plugin.settings.defaultAgentId = nextId;
 						}
 						this.plugin.ensureDefaultAgentId();
@@ -1064,7 +996,8 @@ export class AgentClientSettingTab extends PluginSettingTab {
 			.setName("Display name")
 			.setDesc("Shown in menus and headers.")
 			.addText((text) => {
-				text.setPlaceholder("Custom agent")
+				text
+					.setPlaceholder("Custom agent")
 					.setValue(agent.displayName || agent.id)
 					.onChange(async (value) => {
 						const trimmed = value.trim();
@@ -1081,11 +1014,11 @@ export class AgentClientSettingTab extends PluginSettingTab {
 			.setName("Path")
 			.setDesc("Absolute path to the custom agent.")
 			.addText((text) => {
-				text.setPlaceholder("Absolute path to custom agent")
+				text
+					.setPlaceholder("Absolute path to custom agent")
 					.setValue(agent.command)
 					.onChange(async (value) => {
-						this.plugin.settings.customAgents[index].command =
-							value.trim();
+						this.plugin.settings.customAgents[index].command = value.trim();
 						await this.plugin.saveSettings();
 					});
 			});
@@ -1096,7 +1029,8 @@ export class AgentClientSettingTab extends PluginSettingTab {
 				"Enter one argument per line. Leave empty to run without arguments.",
 			)
 			.addTextArea((text) => {
-				text.setPlaceholder("--flag\n--another=value")
+				text
+					.setPlaceholder("--flag\n--another=value")
 					.setValue(this.formatArgs(agent.args))
 					.onChange(async (value) => {
 						this.plugin.settings.customAgents[index].args =
@@ -1108,15 +1042,13 @@ export class AgentClientSettingTab extends PluginSettingTab {
 
 		new Setting(blockEl)
 			.setName("Environment variables")
-			.setDesc(
-				"Enter KEY=VALUE pairs, one per line. (Stored as plain text)",
-			)
+			.setDesc("Enter KEY=VALUE pairs, one per line. (Stored as plain text)")
 			.addTextArea((text) => {
-				text.setPlaceholder("TOKEN=...")
+				text
+					.setPlaceholder("TOKEN=...")
 					.setValue(this.formatEnv(agent.env))
 					.onChange(async (value) => {
-						this.plugin.settings.customAgents[index].env =
-							this.parseEnv(value);
+						this.plugin.settings.customAgents[index].env = this.parseEnv(value);
 						await this.plugin.saveSettings();
 					});
 				text.inputEl.rows = 3;
@@ -1127,16 +1059,13 @@ export class AgentClientSettingTab extends PluginSettingTab {
 		const base = "Custom agent";
 		const existing = new Set<string>();
 		existing.add(
-			this.plugin.settings.claude.displayName ||
-				this.plugin.settings.claude.id,
+			this.plugin.settings.claude.displayName || this.plugin.settings.claude.id,
 		);
 		existing.add(
-			this.plugin.settings.codex.displayName ||
-				this.plugin.settings.codex.id,
+			this.plugin.settings.codex.displayName || this.plugin.settings.codex.id,
 		);
 		existing.add(
-			this.plugin.settings.gemini.displayName ||
-				this.plugin.settings.gemini.id,
+			this.plugin.settings.gemini.displayName || this.plugin.settings.gemini.id,
 		);
 		for (const item of this.plugin.settings.customAgents) {
 			existing.add(item.displayName || item.id);
@@ -1183,9 +1112,7 @@ export class AgentClientSettingTab extends PluginSettingTab {
 	}
 
 	private formatEnv(env: AgentEnvVar[]): string {
-		return env
-			.map((entry) => `${entry.key}=${entry.value ?? ""}`)
-			.join("\n");
+		return env.map((entry) => `${entry.key}=${entry.value ?? ""}`).join("\n");
 	}
 
 	private parseEnv(value: string): AgentEnvVar[] {

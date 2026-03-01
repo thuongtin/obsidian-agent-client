@@ -1,12 +1,13 @@
 import * as React from "react";
+
 const { useRef, useState, useEffect, useCallback } = React;
 
-import type { ChatMessage } from "../../domain/models/chat-message";
-import type { IAcpClient } from "../../adapters/acp/acp.adapter";
-import type AgentClientPlugin from "../../plugin";
-import type { IChatViewHost } from "./types";
 import { setIcon } from "obsidian";
+import type { IAcpClient } from "../../adapters/acp/acp.adapter";
+import type { ChatMessage } from "../../domain/models/chat-message";
+import type AgentClientPlugin from "../../plugin";
 import { MessageRenderer } from "./MessageRenderer";
+import type { IChatViewHost } from "./types";
 
 /**
  * Props for ChatMessages component
@@ -20,6 +21,8 @@ export interface ChatMessagesProps {
 	isSessionReady: boolean;
 	/** Whether a session is being restored (load/resume/fork) */
 	isRestoringSession: boolean;
+	/** Whether the session is currently reconnecting after a crash */
+	isReconnecting?: boolean;
 	/** Display name of the active agent */
 	agentLabel: string;
 	/** Plugin instance */
@@ -29,10 +32,7 @@ export interface ChatMessagesProps {
 	/** ACP client for terminal operations */
 	acpClient?: IAcpClient;
 	/** Callback to approve a permission request */
-	onApprovePermission?: (
-		requestId: string,
-		optionId: string,
-	) => Promise<void>;
+	onApprovePermission?: (requestId: string, optionId: string) => Promise<void>;
 }
 
 /**
@@ -49,6 +49,7 @@ export function ChatMessages({
 	isSending,
 	isSessionReady,
 	isRestoringSession,
+	isReconnecting,
 	agentLabel,
 	plugin,
 	view,
@@ -150,7 +151,10 @@ export function ChatMessages({
 							onClick={() => {
 								const container = containerRef.current;
 								if (container) {
-									container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
+									container.scrollTo({
+										top: container.scrollHeight,
+										behavior: "smooth",
+									});
 								}
 							}}
 							ref={(el) => {

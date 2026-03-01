@@ -7,14 +7,14 @@
  */
 
 import { Platform } from "obsidian";
-import type { ISettingsAccess } from "../../domain/ports/settings-access.port";
-import type { AgentClientPluginSettings } from "../../plugin";
-import type AgentClientPlugin from "../../plugin";
 import type {
 	ChatMessage,
 	MessageContent,
 } from "../../domain/models/chat-message";
 import type { SavedSessionInfo } from "../../domain/models/session-info";
+import type { ISettingsAccess } from "../../domain/ports/settings-access.port";
+import type AgentClientPlugin from "../../plugin";
+import type { AgentClientPluginSettings } from "../../plugin";
 import { convertWindowsPathToWsl } from "../../shared/wsl-utils";
 
 /** Listener callback invoked when settings change */
@@ -214,8 +214,7 @@ export class SettingsStore implements ISettingsAccess {
 		// Sort by updatedAt descending (newest first)
 		return [...sessions].sort(
 			(a, b) =>
-				new Date(b.updatedAt).getTime() -
-				new Date(a.updatedAt).getTime(),
+				new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
 		);
 	}
 
@@ -330,9 +329,7 @@ export class SettingsStore implements ISettingsAccess {
 	 * @param sessionId - Session ID
 	 * @returns Chat messages or null if not found
 	 */
-	async loadSessionMessages(
-		sessionId: string,
-	): Promise<ChatMessage[] | null> {
+	async loadSessionMessages(sessionId: string): Promise<ChatMessage[] | null> {
 		const filePath = this.getSessionFilePath(sessionId);
 		const adapter = this.plugin.app.vault.adapter;
 
@@ -345,10 +342,7 @@ export class SettingsStore implements ISettingsAccess {
 			const data = JSON.parse(content) as SessionMessagesFile;
 
 			// Validate structure
-			if (
-				typeof data.version !== "number" ||
-				!Array.isArray(data.messages)
-			) {
+			if (typeof data.version !== "number" || !Array.isArray(data.messages)) {
 				console.warn(
 					`[SettingsStore] Invalid session file structure: ${filePath}`,
 				);

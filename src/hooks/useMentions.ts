@@ -1,14 +1,14 @@
-import { useState, useCallback } from "react";
+import { useCallback, useState } from "react";
 import type {
-	NoteMetadata,
 	IVaultAccess,
+	NoteMetadata,
 } from "../domain/ports/vault-access.port";
+import type AgentClientPlugin from "../plugin";
 import {
 	detectMention,
-	replaceMention,
 	type MentionContext,
+	replaceMention,
 } from "../shared/mention-utils";
-import type AgentClientPlugin from "../plugin";
 
 export interface UseMentionsReturn {
 	/** Note suggestions matching the current mention query */

@@ -1,0 +1,19 @@
+{
+	"git": {
+		"commitMessage": "chore(release): v${version}",
+		"tagName": "v${version}",
+		"requireBranch": "master"
+	},
+	"github": {
+		"release": true,
+		"releaseName": "v${version}",
+		"assets": ["main.js", "manifest.json", "styles.css"]
+	},
+	"npm": {
+		"publish": false
+	},
+	"hooks": {
+		"before:bump": "npm run build && npm run typecheck",
+		"after:bump": "node scripts/update-versions.mjs ${version} && git add manifest.json versions.json"
+	}
+}

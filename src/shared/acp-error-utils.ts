@@ -9,8 +9,8 @@
  */
 
 import {
-	AcpErrorCode,
 	type AcpError,
+	AcpErrorCode,
 	type ErrorInfo,
 } from "../domain/models/agent-error";
 

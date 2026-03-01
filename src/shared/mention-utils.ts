@@ -1,4 +1,4 @@
-import { TFile } from "obsidian";
+import type { TFile } from "obsidian";
 import { getLogger } from "./logger";
 
 // Interface for mention service to avoid circular dependency

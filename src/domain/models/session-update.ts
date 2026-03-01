@@ -10,12 +10,12 @@
  */
 
 import type {
+	PermissionOption,
 	PlanEntry,
 	ToolCallContent,
 	ToolCallLocation,
-	ToolKind,
 	ToolCallStatus,
-	PermissionOption,
+	ToolKind,
 } from "./chat-message";
 import type { SlashCommand } from "./chat-session";
 

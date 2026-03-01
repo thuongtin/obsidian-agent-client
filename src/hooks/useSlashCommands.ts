@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useCallback, useState } from "react";
 import type { SlashCommand } from "../domain/models/chat-session";
 
 export interface UseSlashCommandsReturn {

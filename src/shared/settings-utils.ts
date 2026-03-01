@@ -1,6 +1,6 @@
-import type { AgentEnvVar, CustomAgentSettings } from "../plugin";
 import type { BaseAgentSettings } from "../domain/models/agent-config";
 import type { AgentConfig } from "../domain/ports/agent-client.port";
+import type { AgentEnvVar, CustomAgentSettings } from "../plugin";
 
 export const sanitizeArgs = (value: unknown): string[] => {
 	if (Array.isArray(value)) {
@@ -40,9 +40,7 @@ export const normalizeEnvVars = (value: unknown): AgentEnvVar[] => {
 			}
 		}
 	} else if (typeof value === "object") {
-		for (const [key, val] of Object.entries(
-			value as Record<string, unknown>,
-		)) {
+		for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
 			if (typeof key === "string" && key.trim().length > 0) {
 				pairs.push({
 					key: key.trim(),
@@ -97,9 +95,7 @@ export const ensureUniqueCustomAgentIds = (
 	const seen = new Set<string>();
 	return agents.map((agent) => {
 		const base =
-			agent.id && agent.id.trim().length > 0
-				? agent.id.trim()
-				: "custom-agent";
+			agent.id && agent.id.trim().length > 0 ? agent.id.trim() : "custom-agent";
 		let candidate = base;
 		let suffix = 2;
 		while (seen.has(candidate)) {

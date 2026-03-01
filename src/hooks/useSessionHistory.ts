@@ -1,17 +1,17 @@
-import { useState, useCallback, useRef, useMemo } from "react";
-import type { IAgentClient } from "../domain/ports/agent-client.port";
-import type { ISettingsAccess } from "../domain/ports/settings-access.port";
-import type {
-	SessionInfo,
-	ListSessionsResult,
-	SavedSessionInfo,
-} from "../domain/models/session-info";
+import { useCallback, useMemo, useRef, useState } from "react";
+import type { ChatMessage } from "../domain/models/chat-message";
 import type {
 	ChatSession,
-	SessionModeState,
 	SessionModelState,
+	SessionModeState,
 } from "../domain/models/chat-session";
-import type { ChatMessage } from "../domain/models/chat-message";
+import type {
+	ListSessionsResult,
+	SavedSessionInfo,
+	SessionInfo,
+} from "../domain/models/session-info";
+import type { IAgentClient } from "../domain/ports/agent-client.port";
+import type { ISettingsAccess } from "../domain/ports/settings-access.port";
 import {
 	getSessionCapabilityFlags,
 	type SessionCapabilityFlags,
@@ -315,9 +315,7 @@ export function useSessionHistory(
 				}));
 
 				setSessions(sessionInfos);
-				setLocalSessionIds(
-					new Set(localSessions.map((s) => s.sessionId)),
-				);
+				setLocalSessionIds(new Set(localSessions.map((s) => s.sessionId)));
 				setNextCursor(undefined); // No pagination for local sessions
 				setError(null);
 				return;
@@ -330,9 +328,7 @@ export function useSessionHistory(
 					session.agentId,
 					cwd,
 				);
-				setLocalSessionIds(
-					new Set(localSessions.map((s) => s.sessionId)),
-				);
+				setLocalSessionIds(new Set(localSessions.map((s) => s.sessionId)));
 				// Re-merge with local titles to pick up newly saved session titles
 				const sessionsWithLocalTitles = mergeWithLocalTitles(
 					cacheRef.current!.sessions,
@@ -349,8 +345,7 @@ export function useSessionHistory(
 			currentCwdRef.current = cwd;
 
 			try {
-				const result: ListSessionsResult =
-					await agentClient.listSessions(cwd);
+				const result: ListSessionsResult = await agentClient.listSessions(cwd);
 
 				// Merge with local titles for better UX
 				// (some agents return poor quality titles)
@@ -365,9 +360,7 @@ export function useSessionHistory(
 
 				// Update state
 				setSessions(sessionsWithLocalTitles);
-				setLocalSessionIds(
-					new Set(localSessions.map((s) => s.sessionId)),
-				);
+				setLocalSessionIds(new Set(localSessions.map((s) => s.sessionId)));
 				setNextCursor(result.nextCursor);
 
 				// Update cache (with merged titles)
@@ -378,8 +371,7 @@ export function useSessionHistory(
 					timestamp: Date.now(),
 				};
 			} catch (err) {
-				const errorMessage =
-					err instanceof Error ? err.message : String(err);
+				const errorMessage = err instanceof Error ? err.message : String(err);
 				setError(`Failed to fetch sessions: ${errorMessage}`);
 				setSessions([]);
 				setNextCursor(undefined);
@@ -436,17 +428,13 @@ export function useSessionHistory(
 			if (cacheRef.current) {
 				cacheRef.current = {
 					...cacheRef.current,
-					sessions: [
-						...cacheRef.current.sessions,
-						...sessionsWithLocalTitles,
-					],
+					sessions: [...cacheRef.current.sessions, ...sessionsWithLocalTitles],
 					nextCursor: result.nextCursor,
 					timestamp: Date.now(),
 				};
 			}
 		} catch (err) {
-			const errorMessage =
-				err instanceof Error ? err.message : String(err);
+			const errorMessage = err instanceof Error ? err.message : String(err);
 			setError(`Failed to load more sessions: ${errorMessage}`);
 		} finally {
 			setLoading(false);
@@ -483,15 +471,8 @@ export function useSessionHistory(
 							settingsAccess.loadSessionMessages(sessionId);
 
 						// Use load (agent will replay history via session/update, but we ignore it)
-						const result = await agentClient.loadSession(
-							sessionId,
-							cwd,
-						);
-						onSessionLoad(
-							result.sessionId,
-							result.modes,
-							result.models,
-						);
+						const result = await agentClient.loadSession(sessionId, cwd);
+						onSessionLoad(result.sessionId, result.modes, result.models);
 
 						// Restore local messages (may have already resolved)
 						const localMessages = await localMessagesPromise;
@@ -504,15 +485,8 @@ export function useSessionHistory(
 					}
 				} else if (capabilities.canResume) {
 					// Use resume (without history replay, restore from local storage)
-					const result = await agentClient.resumeSession(
-						sessionId,
-						cwd,
-					);
-					onSessionLoad(
-						result.sessionId,
-						result.modes,
-						result.models,
-					);
+					const result = await agentClient.resumeSession(sessionId, cwd);
+					onSessionLoad(result.sessionId, result.modes, result.models);
 
 					// Resume doesn't return history, so restore from local storage
 					const localMessages =
@@ -524,8 +498,7 @@ export function useSessionHistory(
 					throw new Error("Session restoration is not supported");
 				}
 			} catch (err) {
-				const errorMessage =
-					err instanceof Error ? err.message : String(err);
+				const errorMessage = err instanceof Error ? err.message : String(err);
 				setError(`Failed to restore session: ${errorMessage}`);
 				throw err; // Re-throw to allow caller to handle
 			} finally {
@@ -609,8 +582,7 @@ export function useSessionHistory(
 				// Invalidate cache since a new session was created
 				invalidateCache();
 			} catch (err) {
-				const errorMessage =
-					err instanceof Error ? err.message : String(err);
+				const errorMessage = err instanceof Error ? err.message : String(err);
 				setError(`Failed to fork session: ${errorMessage}`);
 				throw err; // Re-throw to allow caller to handle
 			} finally {
@@ -639,15 +611,12 @@ export function useSessionHistory(
 				await settingsAccess.deleteSession(sessionId);
 
 				// Remove from local state
-				setSessions((prev) =>
-					prev.filter((s) => s.sessionId !== sessionId),
-				);
+				setSessions((prev) => prev.filter((s) => s.sessionId !== sessionId));
 
 				// Invalidate cache to ensure consistency
 				invalidateCache();
 			} catch (err) {
-				const errorMessage =
-					err instanceof Error ? err.message : String(err);
+				const errorMessage = err instanceof Error ? err.message : String(err);
 				setError(`Failed to delete session: ${errorMessage}`);
 				throw err; // Re-throw to allow caller to handle
 			}

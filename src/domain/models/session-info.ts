@@ -1,4 +1,4 @@
-import type { SessionModeState, SessionModelState } from "./chat-session";
+import type { SessionModelState, SessionModeState } from "./chat-session";
 
 /**
  * Session metadata from session/list response.

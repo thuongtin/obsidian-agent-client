@@ -5,7 +5,7 @@
  * Prevents accidental deletion due to misclicks.
  */
 
-import { Modal, App } from "obsidian";
+import { type App, Modal } from "obsidian";
 
 /**
  * Confirmation modal for session deletion.

@@ -1,4 +1,4 @@
-import * as acp from "@agentclientprotocol/sdk";
+import type * as acp from "@agentclientprotocol/sdk";
 import type { ToolCallContent } from "../../domain/models/chat-message";
 import type { PromptContent } from "../../domain/models/prompt-content";
 

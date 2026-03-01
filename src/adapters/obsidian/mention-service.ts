@@ -1,6 +1,6 @@
-import { TFile, prepareFuzzySearch } from "obsidian";
+import { prepareFuzzySearch, TFile } from "obsidian";
 import type AgentClientPlugin from "../../plugin";
-import { getLogger, Logger } from "../../shared/logger";
+import { getLogger, type Logger } from "../../shared/logger";
 
 // Note mention service for @-mention functionality
 export class NoteMentionService {
@@ -84,8 +84,7 @@ export class NoteMentionService {
 				const path = file.path;
 
 				// Get aliases from frontmatter
-				const fileCache =
-					this.plugin.app.metadataCache.getFileCache(file);
+				const fileCache = this.plugin.app.metadataCache.getFileCache(file);
 				const aliases = fileCache?.frontmatter?.aliases as
 					| string[]
 					| string

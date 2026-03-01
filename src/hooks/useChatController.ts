@@ -1,37 +1,32 @@
-import { useState, useRef, useEffect, useMemo, useCallback } from "react";
-import { Notice, FileSystemAdapter } from "obsidian";
-
-import type AgentClientPlugin from "../plugin";
-import type { AttachedImage } from "../components/chat/ImagePreviewStrip";
-import { SessionHistoryModal } from "../components/chat/SessionHistoryModal";
-import { ConfirmDeleteModal } from "../components/chat/ConfirmDeleteModal";
-
+import { FileSystemAdapter, Notice } from "obsidian";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { IAcpClient } from "../adapters/acp/acp.adapter";
 // Service imports
 import { NoteMentionService } from "../adapters/obsidian/mention-service";
-import { getLogger, Logger } from "../shared/logger";
-import { ChatExporter } from "../shared/chat-exporter";
-
 // Adapter imports
 import { ObsidianVaultAdapter } from "../adapters/obsidian/vault.adapter";
-import type { IAcpClient } from "../adapters/acp/acp.adapter";
-
-// Hooks imports
-import { useSettings } from "./useSettings";
-import { useMentions } from "./useMentions";
-import { useSlashCommands } from "./useSlashCommands";
-import { useAutoMention } from "./useAutoMention";
-import { useAgentSession } from "./useAgentSession";
-import { useChat } from "./useChat";
-import { usePermission } from "./usePermission";
-import { useAutoExport } from "./useAutoExport";
-import { useSessionHistory } from "./useSessionHistory";
-
+import { ConfirmDeleteModal } from "../components/chat/ConfirmDeleteModal";
+import type { AttachedImage } from "../components/chat/ImagePreviewStrip";
+import { SessionHistoryModal } from "../components/chat/SessionHistoryModal";
 // Domain model imports
 import type {
-	SessionModeState,
 	SessionModelState,
+	SessionModeState,
 } from "../domain/models/chat-session";
 import type { ImagePromptContent } from "../domain/models/prompt-content";
+import type AgentClientPlugin from "../plugin";
+import { ChatExporter } from "../shared/chat-exporter";
+import { getLogger, type Logger } from "../shared/logger";
+import { useAgentSession } from "./useAgentSession";
+import { useAutoExport } from "./useAutoExport";
+import { useAutoMention } from "./useAutoMention";
+import { useChat } from "./useChat";
+import { useMentions } from "./useMentions";
+import { usePermission } from "./usePermission";
+import { useSessionHistory } from "./useSessionHistory";
+// Hooks imports
+import { useSettings } from "./useSettings";
+import { useSlashCommands } from "./useSlashCommands";
 
 // Agent info for display (from plugin.getAvailableAgents())
 interface AgentInfo {
@@ -222,8 +217,7 @@ export function useChatController(
 		[logger, agentSession],
 	);
 
-	const [isLoadingSessionHistory, setIsLoadingSessionHistory] =
-		useState(false);
+	const [isLoadingSessionHistory, setIsLoadingSessionHistory] = useState(false);
 
 	const handleLoadStart = useCallback(() => {
 		logger.log(
@@ -252,8 +246,7 @@ export function useChatController(
 	});
 
 	// Combined error info (session errors take precedence)
-	const errorInfo =
-		sessionErrorInfo || chat.errorInfo || permission.errorInfo;
+	const errorInfo = sessionErrorInfo || chat.errorInfo || permission.errorInfo;
 
 	// ============================================================
 	// Local State
@@ -276,19 +269,13 @@ export function useChatController(
 	const activeAgentLabel = useMemo(() => {
 		const activeId = session.agentId;
 		if (activeId === plugin.settings.claude.id) {
-			return (
-				plugin.settings.claude.displayName || plugin.settings.claude.id
-			);
+			return plugin.settings.claude.displayName || plugin.settings.claude.id;
 		}
 		if (activeId === plugin.settings.codex.id) {
-			return (
-				plugin.settings.codex.displayName || plugin.settings.codex.id
-			);
+			return plugin.settings.codex.displayName || plugin.settings.codex.id;
 		}
 		if (activeId === plugin.settings.gemini.id) {
-			return (
-				plugin.settings.gemini.displayName || plugin.settings.gemini.id
-			);
+			return plugin.settings.gemini.displayName || plugin.settings.gemini.id;
 		}
 		const custom = plugin.settings.customAgents.find(
 			(agent) => agent.id === activeId,
@@ -318,10 +305,7 @@ export function useChatController(
 
 			// Save session metadata locally on first message
 			if (isFirstMessage && session.sessionId) {
-				await sessionHistory.saveSessionLocally(
-					session.sessionId,
-					content,
-				);
+				await sessionHistory.saveSessionLocally(session.sessionId, content);
 				logger.log(
 					`[useChatController] Session saved locally: ${session.sessionId}`,
 				);
@@ -370,19 +354,13 @@ export function useChatController(
 
 			// Auto-export current chat before starting new one (if has messages)
 			if (messages.length > 0) {
-				await autoExport.autoExportIfEnabled(
-					"newChat",
-					messages,
-					session,
-				);
+				await autoExport.autoExportIfEnabled("newChat", messages, session);
 			}
 
 			autoMention.toggle(false);
 			chat.clearMessages();
 
-			const newAgentId = isAgentSwitch
-				? requestedAgentId
-				: session.agentId;
+			const newAgentId = isAgentSwitch ? requestedAgentId : session.agentId;
 			await agentSession.restartSession(newAgentId);
 
 			// Invalidate session history cache when creating new session
@@ -467,9 +445,7 @@ export function useChatController(
 	const handleRestoreSession = useCallback(
 		async (sessionId: string, cwd: string) => {
 			try {
-				logger.log(
-					`[useChatController] Restoring session: ${sessionId}`,
-				);
+				logger.log(`[useChatController] Restoring session: ${sessionId}`);
 				chat.clearMessages();
 				await sessionHistory.restoreSession(sessionId, cwd);
 				new Notice("[Agent Client] Session restored");
@@ -508,9 +484,7 @@ export function useChatController(
 				sessionTitle,
 				async () => {
 					try {
-						logger.log(
-							`[useChatController] Deleting session: ${sessionId}`,
-						);
+						logger.log(`[useChatController] Deleting session: ${sessionId}`);
 						await sessionHistory.deleteSession(sessionId);
 						new Notice("[Agent Client] Session deleted");
 					} catch (error) {
@@ -673,9 +647,7 @@ export function useChatController(
 	// Cleanup on unmount only - auto-export and close session
 	useEffect(() => {
 		return () => {
-			logger.log(
-				"[useChatController] Cleanup: auto-export and close session",
-			);
+			logger.log("[useChatController] Cleanup: auto-export and close session");
 			void (async () => {
 				await autoExportRef.current.autoExportIfEnabled(
 					"closeChat",
@@ -760,12 +732,7 @@ export function useChatController(
 		prevIsSendingRef.current = isSending;
 
 		// Save when turn ends (isSending: true → false) and has messages
-		if (
-			wasSending &&
-			!isSending &&
-			session.sessionId &&
-			messages.length > 0
-		) {
+		if (wasSending && !isSending && session.sessionId && messages.length > 0) {
 			sessionHistory.saveSessionMessages(session.sessionId, messages);
 			logger.log(
 				`[useChatController] Session messages saved: ${session.sessionId}`,

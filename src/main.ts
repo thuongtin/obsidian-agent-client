@@ -5,5 +5,5 @@
  * The actual implementation is in plugin.ts
  */
 
-export { default } from "./plugin";
 export type { AgentClientPluginSettings } from "./plugin";
+export { default } from "./plugin";

@@ -1,9 +1,10 @@
+import { setIcon } from "obsidian";
 import * as React from "react";
+import type { IAcpClient } from "../../adapters/acp/acp.adapter";
 import type {
 	ChatMessage,
 	MessageContent,
 } from "../../domain/models/chat-message";
-import type { IAcpClient } from "../../adapters/acp/acp.adapter";
 import type AgentClientPlugin from "../../plugin";
 import { MessageContentRenderer } from "./MessageContentRenderer";
 
@@ -12,10 +13,7 @@ interface MessageRendererProps {
 	plugin: AgentClientPlugin;
 	acpClient?: IAcpClient;
 	/** Callback to approve a permission request */
-	onApprovePermission?: (
-		requestId: string,
-		optionId: string,
-	) => Promise<void>;
+	onApprovePermission?: (requestId: string, optionId: string) => Promise<void>;
 }
 
 /**
@@ -72,10 +70,7 @@ export function MessageRenderer({
 				if (group.type === "images") {
 					// Render images in horizontal scroll container
 					return (
-						<div
-							key={idx}
-							className="agent-client-message-images-strip"
-						>
+						<div key={idx} className="agent-client-message-images-strip">
 							{group.items.map((content, imgIdx) => (
 								<MessageContentRenderer
 									key={imgIdx}
@@ -105,6 +100,71 @@ export function MessageRenderer({
 					);
 				}
 			})}
+			{message.role === "user" &&
+				message.status &&
+				message.status !== "sent" && (
+					<div
+						className={`agent-client-message-status agent-client-message-status-${message.status}`}
+						style={{
+							display: "flex",
+							justifyContent: "flex-end",
+							opacity: 0.6,
+							marginTop: "4px",
+							fontSize: "0.8em",
+						}}
+					>
+						{message.status === "queued" && (
+							<span
+								style={{
+									display: "flex",
+									alignItems: "center",
+									gap: "4px",
+								}}
+							>
+								<span
+									ref={(el) => {
+										if (el) setIcon(el, "clock");
+									}}
+								/>{" "}
+								Queued
+							</span>
+						)}
+						{message.status === "sending" && (
+							<span
+								style={{
+									display: "flex",
+									alignItems: "center",
+									gap: "4px",
+								}}
+							>
+								<span
+									ref={(el) => {
+										if (el) setIcon(el, "loader");
+									}}
+									className="agent-client-spin"
+								/>{" "}
+								Sending...
+							</span>
+						)}
+						{message.status === "error" && (
+							<span
+								style={{
+									display: "flex",
+									alignItems: "center",
+									gap: "4px",
+									color: "var(--text-error)",
+								}}
+							>
+								<span
+									ref={(el) => {
+										if (el) setIcon(el, "alert-circle");
+									}}
+								/>{" "}
+								Failed
+							</span>
+						)}
+					</div>
+				)}
 		</div>
 	);
 }

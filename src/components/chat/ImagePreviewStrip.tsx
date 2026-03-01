@@ -1,5 +1,5 @@
-import * as React from "react";
 import { setIcon } from "obsidian";
+import * as React from "react";
 
 /**
  * Attached image with unique ID for React key stability

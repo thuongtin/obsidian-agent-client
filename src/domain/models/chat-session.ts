@@ -27,6 +27,7 @@ export type SessionState =
 	| "ready" // Ready to send/receive messages
 	| "busy" // Agent is processing a request
 	| "error" // An error occurred
+	| "reconnecting" // Reconnecting after an unexpected crash
 	| "disconnected"; // Session has been closed
 
 // ============================================================================

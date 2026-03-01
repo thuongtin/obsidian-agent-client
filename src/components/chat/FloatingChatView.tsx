@@ -1,26 +1,24 @@
 import * as React from "react";
+
 const { useState, useRef, useEffect, useCallback, useMemo } = React;
-import { createRoot, type Root } from "react-dom/client";
+
 import { Notice } from "obsidian";
-
-import type AgentClientPlugin from "../../plugin";
-import type {
-	IChatViewContainer,
-	ChatViewType,
-} from "../../domain/ports/chat-view-container.port";
+import { createRoot, type Root } from "react-dom/client";
 import type { ChatInputState } from "../../domain/models/chat-input-state";
-import type { IChatViewHost } from "./types";
 import type { ImagePromptContent } from "../../domain/models/prompt-content";
-
-// Component imports
-import { ChatMessages } from "./ChatMessages";
-import { ChatInput } from "./ChatInput";
-import { InlineHeader } from "./InlineHeader";
-
+import type {
+	ChatViewType,
+	IChatViewContainer,
+} from "../../domain/ports/chat-view-container.port";
 // Hooks imports
 import { useChatController } from "../../hooks/useChatController";
-
+import type AgentClientPlugin from "../../plugin";
 import { clampPosition } from "../../shared/floating-utils";
+import { ChatInput } from "./ChatInput";
+// Component imports
+import { ChatMessages } from "./ChatMessages";
+import { InlineHeader } from "./InlineHeader";
+import type { IChatViewHost } from "./types";
 
 // ============================================================
 // Type Definitions
@@ -302,11 +300,7 @@ function FloatingChatComponent({
 	// Cleanup registered listeners on unmount
 	useEffect(() => {
 		return () => {
-			for (const {
-				target,
-				type,
-				callback,
-			} of registeredListenersRef.current) {
+			for (const { target, type, callback } of registeredListenersRef.current) {
 				target.removeEventListener(type, callback);
 			}
 			registeredListenersRef.current = [];
@@ -318,12 +312,7 @@ function FloatingChatComponent({
 		// Open new window with 30px offset from current position, clamped to viewport
 		plugin.openNewFloatingChat(
 			true,
-			clampPosition(
-				position.x - 30,
-				position.y - 30,
-				size.width,
-				size.height,
-			),
+			clampPosition(position.x - 30, position.y - 30, size.width, size.height),
 		);
 	}, [plugin, position, size.width, size.height]);
 
@@ -333,9 +322,7 @@ function FloatingChatComponent({
 
 	// Listen for expand requests
 	useEffect(() => {
-		const handleExpandRequest = (
-			event: CustomEvent<{ viewId: string }>,
-		) => {
+		const handleExpandRequest = (event: CustomEvent<{ viewId: string }>) => {
 			if (event.detail.viewId === viewId) {
 				setIsExpanded(true);
 			}
@@ -500,12 +487,13 @@ function FloatingChatComponent({
 					}
 
 					// Convert attached images to ImagePromptContent format
-					const imagesToSend: ImagePromptContent[] =
-						attachedImages.map((img) => ({
+					const imagesToSend: ImagePromptContent[] = attachedImages.map(
+						(img) => ({
 							type: "image",
 							data: img.data,
 							mimeType: img.mimeType,
-						}));
+						}),
+					);
 
 					// Clear input before sending
 					const messageToSend = inputValue.trim();
@@ -537,8 +525,7 @@ function FloatingChatComponent({
 				},
 				hasFocus: () =>
 					isExpanded &&
-					(containerRef.current?.contains(document.activeElement) ??
-						false),
+					(containerRef.current?.contains(document.activeElement) ?? false),
 				expand: () => {
 					setIsExpanded(true);
 				},
@@ -630,20 +617,15 @@ function FloatingChatComponent({
 					callback: CustomEventCallback,
 				) => ReturnType<typeof workspace.on>;
 			}
-		).on(
-			"agent-client:approve-active-permission",
-			(targetViewId?: string) => {
-				if (targetViewId && targetViewId !== viewId) return;
-				void (async () => {
-					const success = await permission.approveActivePermission();
-					if (!success) {
-						new Notice(
-							"[Agent Client] No active permission request",
-						);
-					}
-				})();
-			},
-		);
+		).on("agent-client:approve-active-permission", (targetViewId?: string) => {
+			if (targetViewId && targetViewId !== viewId) return;
+			void (async () => {
+				const success = await permission.approveActivePermission();
+				if (!success) {
+					new Notice("[Agent Client] No active permission request");
+				}
+			})();
+		});
 
 		const rejectRef = (
 			workspace as unknown as {
@@ -652,20 +634,15 @@ function FloatingChatComponent({
 					callback: CustomEventCallback,
 				) => ReturnType<typeof workspace.on>;
 			}
-		).on(
-			"agent-client:reject-active-permission",
-			(targetViewId?: string) => {
-				if (targetViewId && targetViewId !== viewId) return;
-				void (async () => {
-					const success = await permission.rejectActivePermission();
-					if (!success) {
-						new Notice(
-							"[Agent Client] No active permission request",
-						);
-					}
-				})();
-			},
-		);
+		).on("agent-client:reject-active-permission", (targetViewId?: string) => {
+			if (targetViewId && targetViewId !== viewId) return;
+			void (async () => {
+				const success = await permission.rejectActivePermission();
+				if (!success) {
+					new Notice("[Agent Client] No active permission request");
+				}
+			})();
+		});
 
 		const cancelRef = (
 			workspace as unknown as {
@@ -731,10 +708,7 @@ function FloatingChatComponent({
 				height: size.height,
 			}}
 		>
-			<div
-				className="agent-client-floating-header"
-				onMouseDown={onMouseDown}
-			>
+			<div className="agent-client-floating-header" onMouseDown={onMouseDown}>
 				<InlineHeader
 					variant="floating"
 					agentLabel={activeAgentLabel}

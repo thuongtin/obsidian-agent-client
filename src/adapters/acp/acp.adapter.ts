@@ -1,42 +1,41 @@
-import { spawn, ChildProcess } from "child_process";
 import * as acp from "@agentclientprotocol/sdk";
+import { type ChildProcess, spawn } from "child_process";
 import { Platform } from "obsidian";
-
 import type {
-	IAgentClient,
-	AgentConfig,
-	InitializeResult,
-	NewSessionResult,
-} from "../../domain/ports/agent-client.port";
+	SessionModelState,
+	SessionModeState,
+	SlashCommand,
+} from "src/domain/models/chat-session";
+import type { ProcessError } from "../../domain/models/agent-error";
 import type {
 	MessageContent,
 	PermissionOption,
 } from "../../domain/models/chat-message";
-import type { SessionUpdate } from "../../domain/models/session-update";
 import type { PromptContent } from "../../domain/models/prompt-content";
-import type { ProcessError } from "../../domain/models/agent-error";
 import type {
+	ForkSessionResult,
 	ListSessionsResult,
 	LoadSessionResult,
 	ResumeSessionResult,
-	ForkSessionResult,
 } from "../../domain/models/session-info";
-import { AcpTypeConverter } from "./acp-type-converter";
-import { TerminalManager } from "../../shared/terminal-manager";
-import { getLogger, Logger } from "../../shared/logger";
-import type AgentClientPlugin from "../../plugin";
+import type { SessionUpdate } from "../../domain/models/session-update";
 import type {
-	SlashCommand,
-	SessionModeState,
-	SessionModelState,
-} from "src/domain/models/chat-session";
-import {
-	wrapCommandForWsl,
-	convertWindowsPathToWsl,
-} from "../../shared/wsl-utils";
+	AgentConfig,
+	IAgentClient,
+	InitializeResult,
+	NewSessionResult,
+} from "../../domain/ports/agent-client.port";
+import type AgentClientPlugin from "../../plugin";
+import { getLogger, type Logger } from "../../shared/logger";
 import { resolveCommandDirectory } from "../../shared/path-utils";
+import { escapeShellArgWindows } from "../../shared/shell-utils";
+import { TerminalManager } from "../../shared/terminal-manager";
 import { getEnhancedWindowsEnv } from "../../shared/windows-env";
-import { escapeShellArgWindows, getLoginShell } from "../../shared/shell-utils";
+import {
+	convertWindowsPathToWsl,
+	wrapCommandForWsl,
+} from "../../shared/wsl-utils";
+import { AcpTypeConverter } from "./acp-type-converter";
 
 /**
  * Extended ACP Client interface for UI layer.
@@ -82,11 +81,11 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 	// Error callback for process-level errors
 	private errorCallback: ((error: ProcessError) => void) | null = null;
 
+	// Disconnect callback for unexpected exits
+	private disconnectCallback: (() => void) | null = null;
+
 	// Message update callback for permission UI updates
-	private updateMessage: (
-		toolCallId: string,
-		content: MessageContent,
-	) => void;
+	private updateMessage: (toolCallId: string, content: MessageContent) => void;
 
 	// Configuration state
 	private currentConfig: AgentConfig | null = null;
@@ -193,9 +192,18 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 			args.length > 0 ? args.join(" ") : "(none)",
 		);
 
+		// Wait for background environment extraction to complete if it hasn't already
+		if (!this.plugin.cachedEnv && this.plugin.envPromise) {
+			this.logger.log(
+				"[AcpAdapter] Waiting for background environment extraction to finish...",
+			);
+			await this.plugin.envPromise;
+		}
+
 		// Prepare environment variables
 		let baseEnv: NodeJS.ProcessEnv = {
 			...process.env,
+			...(this.plugin.cachedEnv || {}),
 			...(config.env || {}),
 		};
 
@@ -235,9 +243,8 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 		if (Platform.isWin && this.plugin.settings.windowsWslMode) {
 			// Extract node directory from settings for PATH
 			const nodeDir = this.plugin.settings.nodePath
-				? resolveCommandDirectory(
-						this.plugin.settings.nodePath.trim(),
-					) || undefined
+				? resolveCommandDirectory(this.plugin.settings.nodePath.trim()) ||
+					undefined
 				: undefined;
 
 			const wslWrapped = wrapCommandForWsl(
@@ -257,42 +264,13 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 				spawnArgs,
 			);
 		}
-		// On macOS and Linux, wrap the command in a login shell to inherit the user's environment
-		// This ensures that PATH modifications in .zshrc/.bash_profile are available
+		// On macOS and Linux, we no longer use a login shell.
+		// Instead, we use baseEnv which now includes the cached environment extracted during plugin load.
 		else if (Platform.isMacOS || Platform.isLinux) {
-			const shell = getLoginShell();
-			const commandString = [command, ...args]
-				.map((arg) => "'" + arg.replace(/'/g, "'\\''") + "'")
-				.join(" ");
-
-			// If nodePath is configured, prepend PATH export to ensure node is available.
-			// This is necessary because:
-			// 1. Login shells (-l) re-initialize PATH from shell config files, overwriting env.PATH
-			// 2. Even when the agent command uses an absolute path, scripts with shebang
-			//    "#!/usr/bin/env node" require node to be in PATH for the env command to find it
-			// Therefore, we must explicitly set PATH inside the shell command
-			let fullCommand = commandString;
-			if (
-				this.plugin.settings.nodePath &&
-				this.plugin.settings.nodePath.trim().length > 0
-			) {
-				const nodeDir = resolveCommandDirectory(
-					this.plugin.settings.nodePath.trim(),
-				);
-				if (nodeDir) {
-					// Escape single quotes in nodeDir for shell safety
-					const escapedNodeDir = nodeDir.replace(/'/g, "'\\''");
-					fullCommand = `export PATH='${escapedNodeDir}':"$PATH"; ${commandString}`;
-				}
-			}
-
-			spawnCommand = shell;
-			spawnArgs = ["-l", "-c", fullCommand];
 			this.logger.log(
-				"[AcpAdapter] Using login shell:",
-				shell,
-				"with command:",
-				fullCommand,
+				"[AcpAdapter] Using direct spawn with cached env for command:",
+				spawnCommand,
+				spawnArgs,
 			);
 		}
 		// On Windows (non-WSL), escape command and arguments for cmd.exe
@@ -309,8 +287,7 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 
 		// Use shell on Windows for proper argument handling, but NOT in WSL mode
 		// When using WSL, wsl.exe is the command and doesn't need shell wrapper
-		const needsShell =
-			Platform.isWin && !this.plugin.settings.windowsWslMode;
+		const needsShell = Platform.isWin && !this.plugin.settings.windowsWslMode;
 
 		// Spawn the agent process
 		const agentProcess = spawn(spawnCommand, spawnArgs, {
@@ -332,10 +309,7 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 		});
 
 		agentProcess.on("error", (error) => {
-			this.logger.error(
-				`[AcpAdapter] ${agentLabel} process error:`,
-				error,
-			);
+			this.logger.error(`[AcpAdapter] ${agentLabel} process error:`, error);
 
 			const processError: ProcessError = {
 				type: "spawn_failed",
@@ -369,6 +343,29 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 				};
 
 				this.errorCallback?.(processError);
+			} else if (!agentProcess.killed) {
+				// Unexpected exit
+				this.logger.error(
+					`[AcpAdapter] Unexpected exit of process ${agentLabel}. Stderr: ${this.recentStderr}`,
+				);
+
+				const processError: ProcessError = {
+					type: "spawn_failed", // Re-use spawn_failed or just define a custom one
+					agentId: config.id,
+					exitCode: code ?? undefined,
+					title: "Agent Exited Unexpectedly",
+					message: `The agent process ${agentLabel} exited with code ${code}.`,
+					suggestion: this.recentStderr
+						? `Process output:\n${this.recentStderr}`
+						: "Make sure the agent command is correct and installed.",
+				};
+
+				// Only trigger callbacks if this exit belongs to the CURRENT active process.
+				// If we already switched to a new agent, don't break its connection.
+				if (this.agentProcess === agentProcess) {
+					this.errorCallback?.(processError);
+					this.disconnectCallback?.();
+				}
 			}
 		});
 
@@ -449,10 +446,7 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 			this.logger.log(
 				`[AcpAdapter] ✅ Connected to agent (protocol v${initResult.protocolVersion})`,
 			);
-			this.logger.log(
-				"[AcpAdapter] Auth methods:",
-				initResult.authMethods,
-			);
+			this.logger.log("[AcpAdapter] Auth methods:", initResult.authMethods);
 			this.logger.log(
 				"[AcpAdapter] Agent capabilities:",
 				initResult.agentCapabilities,
@@ -465,8 +459,7 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 			// Extract capabilities from agent capabilities
 			const promptCaps = initResult.agentCapabilities?.promptCapabilities;
 			const mcpCaps = initResult.agentCapabilities?.mcpCapabilities;
-			const sessionCaps =
-				initResult.agentCapabilities?.sessionCapabilities;
+			const sessionCaps = initResult.agentCapabilities?.sessionCapabilities;
 
 			return {
 				protocolVersion: initResult.protocolVersion,
@@ -479,8 +472,7 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 				},
 				// Full agent capabilities
 				agentCapabilities: {
-					loadSession:
-						initResult.agentCapabilities?.loadSession ?? false,
+					loadSession: initResult.agentCapabilities?.loadSession ?? false,
 					// Session capabilities (unstable features)
 					sessionCapabilities: sessionCaps
 						? {
@@ -526,9 +518,7 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 	 */
 	async newSession(workingDirectory: string): Promise<NewSessionResult> {
 		if (!this.connection) {
-			throw new Error(
-				"Connection not initialized. Call initialize() first.",
-			);
+			throw new Error("Connection not initialized. Call initialize() first.");
 		}
 
 		try {
@@ -540,10 +530,7 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 				sessionCwd = convertWindowsPathToWsl(workingDirectory);
 			}
 
-			this.logger.log(
-				"[AcpAdapter] Using working directory:",
-				sessionCwd,
-			);
+			this.logger.log("[AcpAdapter] Using working directory:", sessionCwd);
 
 			const sessionResult = await this.connection.newSession({
 				cwd: sessionCwd,
@@ -562,14 +549,12 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 			let modes: SessionModeState | undefined;
 			if (sessionResult.modes) {
 				modes = {
-					availableModes: sessionResult.modes.availableModes.map(
-						(m) => ({
-							id: m.id,
-							name: m.name,
-							// Convert null to undefined for type compatibility
-							description: m.description ?? undefined,
-						}),
-					),
+					availableModes: sessionResult.modes.availableModes.map((m) => ({
+						id: m.id,
+						name: m.name,
+						// Convert null to undefined for type compatibility
+						description: m.description ?? undefined,
+					})),
 					currentModeId: sessionResult.modes.currentModeId,
 				};
 				this.logger.log(
@@ -581,14 +566,12 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 			let models: SessionModelState | undefined;
 			if (sessionResult.models) {
 				models = {
-					availableModels: sessionResult.models.availableModels.map(
-						(m) => ({
-							modelId: m.modelId,
-							name: m.name,
-							// Convert null to undefined for type compatibility
-							description: m.description ?? undefined,
-						}),
-					),
+					availableModels: sessionResult.models.availableModels.map((m) => ({
+						modelId: m.modelId,
+						name: m.name,
+						// Convert null to undefined for type compatibility
+						description: m.description ?? undefined,
+					})),
 					currentModelId: sessionResult.models.currentModelId,
 				};
 				this.logger.log(
@@ -613,9 +596,7 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 	 */
 	async authenticate(methodId: string): Promise<boolean> {
 		if (!this.connection) {
-			throw new Error(
-				"Connection not initialized. Call initialize() first.",
-			);
+			throw new Error("Connection not initialized. Call initialize() first.");
 		}
 
 		try {
@@ -631,14 +612,9 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 	/**
 	 * Send a message to the agent in a specific session.
 	 */
-	async sendPrompt(
-		sessionId: string,
-		content: PromptContent[],
-	): Promise<void> {
+	async sendPrompt(sessionId: string, content: PromptContent[]): Promise<void> {
 		if (!this.connection) {
-			throw new Error(
-				"Connection not initialized. Call initialize() first.",
-			);
+			throw new Error("Connection not initialized. Call initialize() first.");
 		}
 
 		// Reset current message for new assistant response
@@ -702,10 +678,7 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 				errorObj.code === -32603 &&
 				"data" in errorObj
 			) {
-				const errorData = errorObj.data as Record<
-					string,
-					unknown
-				> | null;
+				const errorData = errorObj.data as Record<string, unknown> | null;
 				if (
 					errorData &&
 					typeof errorData === "object" &&
@@ -721,9 +694,7 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 					}
 					// Ignore "user aborted" errors (from cancel operation)
 					if (errorData.details.includes("user aborted")) {
-						this.logger.log(
-							"[AcpAdapter] User aborted request - ignoring",
-						);
+						this.logger.log("[AcpAdapter] User aborted request - ignoring");
 						return;
 					}
 				}
@@ -743,25 +714,18 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 		}
 
 		try {
-			this.logger.log(
-				"[AcpAdapter] Sending session/cancel notification...",
-			);
+			this.logger.log("[AcpAdapter] Sending session/cancel notification...");
 
 			await this.connection.cancel({
 				sessionId: sessionId,
 			});
 
-			this.logger.log(
-				"[AcpAdapter] Cancellation request sent successfully",
-			);
+			this.logger.log("[AcpAdapter] Cancellation request sent successfully");
 
 			// Cancel all running operations (permission requests + terminals)
 			this.cancelAllOperations();
 		} catch (error) {
-			this.logger.error(
-				"[AcpAdapter] Failed to send cancellation:",
-				error,
-			);
+			this.logger.error("[AcpAdapter] Failed to send cancellation:", error);
 
 			// Still cancel all operations even if network cancellation failed
 			this.cancelAllOperations();
@@ -830,9 +794,7 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 	 */
 	async setSessionMode(sessionId: string, modeId: string): Promise<void> {
 		if (!this.connection) {
-			throw new Error(
-				"Connection not initialized. Call initialize() first.",
-			);
+			throw new Error("Connection not initialized. Call initialize() first.");
 		}
 
 		this.logger.log(
@@ -846,10 +808,7 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 			});
 			this.logger.log(`[AcpAdapter] Session mode set to: ${modeId}`);
 		} catch (error) {
-			this.logger.error(
-				"[AcpAdapter] Failed to set session mode:",
-				error,
-			);
+			this.logger.error("[AcpAdapter] Failed to set session mode:", error);
 			throw error;
 		}
 	}
@@ -859,9 +818,7 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 	 */
 	async setSessionModel(sessionId: string, modelId: string): Promise<void> {
 		if (!this.connection) {
-			throw new Error(
-				"Connection not initialized. Call initialize() first.",
-			);
+			throw new Error("Connection not initialized. Call initialize() first.");
 		}
 
 		this.logger.log(
@@ -875,10 +832,7 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 			});
 			this.logger.log(`[AcpAdapter] Session model set to: ${modelId}`);
 		} catch (error) {
-			this.logger.error(
-				"[AcpAdapter] Failed to set session model:",
-				error,
-			);
+			this.logger.error("[AcpAdapter] Failed to set session model:", error);
 			throw error;
 		}
 	}
@@ -907,6 +861,15 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 	 */
 	onError(callback: (error: ProcessError) => void): void {
 		this.errorCallback = callback;
+	}
+
+	/**
+	 * Register callback for disconnection notifications.
+	 *
+	 * Called when the agent process exits or the connection is lost unexpectedly.
+	 */
+	onDisconnect(callback: () => void): void {
+		this.disconnectCallback = callback;
 	}
 
 	/**
@@ -1054,9 +1017,7 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 					kind: update.kind ?? undefined,
 					content: AcpTypeConverter.toToolCallContent(update.content),
 					locations: update.locations ?? undefined,
-					rawInput: update.rawInput as
-						| { [k: string]: unknown }
-						| undefined,
+					rawInput: update.rawInput as { [k: string]: unknown } | undefined,
 				});
 				break;
 			}
@@ -1075,13 +1036,13 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 					update.availableCommands,
 				);
 
-				const commands: SlashCommand[] = (
-					update.availableCommands || []
-				).map((cmd) => ({
-					name: cmd.name,
-					description: cmd.description,
-					hint: cmd.input?.hint ?? null,
-				}));
+				const commands: SlashCommand[] = (update.availableCommands || []).map(
+					(cmd) => ({
+						name: cmd.name,
+						description: cmd.description,
+						hint: cmd.input?.hint ?? null,
+					}),
+				);
 
 				this.sessionUpdateCallback?.({
 					type: "available_commands_update",
@@ -1198,8 +1159,7 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 					(option) =>
 						option.kind === "allow_once" ||
 						option.kind === "allow_always" ||
-						(!option.kind &&
-							option.name.toLowerCase().includes("allow")),
+						(!option.kind && option.name.toLowerCase().includes("allow")),
 				) || params.options[0]; // fallback to first option
 
 			this.logger.log(
@@ -1223,9 +1183,7 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 		const normalizedOptions: PermissionOption[] = params.options.map(
 			(option) => {
 				const normalizedKind =
-					option.kind === "reject_always"
-						? "reject_once"
-						: option.kind;
+					option.kind === "reject_always" ? "reject_once" : option.kind;
 				const kind: PermissionOption["kind"] = normalizedKind
 					? normalizedKind
 					: option.name.toLowerCase().includes("allow")
@@ -1268,9 +1226,7 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 			content: AcpTypeConverter.toToolCallContent(
 				toolCallInfo?.content as acp.ToolCallContent[] | undefined,
 			),
-			rawInput: toolCallInfo?.rawInput as
-				| { [k: string]: unknown }
-				| undefined,
+			rawInput: toolCallInfo?.rawInput as { [k: string]: unknown } | undefined,
 			permissionRequest: permissionRequestData,
 		});
 
@@ -1333,10 +1289,7 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 	createTerminal(
 		params: acp.CreateTerminalRequest,
 	): Promise<acp.CreateTerminalResponse> {
-		this.logger.log(
-			"[AcpAdapter] createTerminal called with params:",
-			params,
-		);
+		this.logger.log("[AcpAdapter] createTerminal called with params:", params);
 
 		// Use current config's working directory if cwd is not provided
 		const modifiedParams = {
@@ -1503,13 +1456,11 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 			let models: SessionModelState | undefined;
 			if (response.models) {
 				models = {
-					availableModels: response.models.availableModels.map(
-						(m) => ({
-							modelId: m.modelId,
-							name: m.name,
-							description: m.description ?? undefined,
-						}),
-					),
+					availableModels: response.models.availableModels.map((m) => ({
+						modelId: m.modelId,
+						name: m.name,
+						description: m.description ?? undefined,
+					})),
 					currentModelId: response.models.currentModelId,
 				};
 			}
@@ -1577,13 +1528,11 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 			let models: SessionModelState | undefined;
 			if (response.models) {
 				models = {
-					availableModels: response.models.availableModels.map(
-						(m) => ({
-							modelId: m.modelId,
-							name: m.name,
-							description: m.description ?? undefined,
-						}),
-					),
+					availableModels: response.models.availableModels.map((m) => ({
+						modelId: m.modelId,
+						name: m.name,
+						description: m.description ?? undefined,
+					})),
 					currentModelId: response.models.currentModelId,
 				};
 			}
@@ -1654,13 +1603,11 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 			let models: SessionModelState | undefined;
 			if (response.models) {
 				models = {
-					availableModels: response.models.availableModels.map(
-						(m) => ({
-							modelId: m.modelId,
-							name: m.name,
-							description: m.description ?? undefined,
-						}),
-					),
+					availableModels: response.models.availableModels.map((m) => ({
+						modelId: m.modelId,
+						name: m.name,
+						description: m.description ?? undefined,
+					})),
 					currentModelId: response.models.currentModelId,
 				};
 			}

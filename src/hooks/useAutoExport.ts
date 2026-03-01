@@ -1,10 +1,10 @@
+import { Notice } from "obsidian";
 import { useCallback } from "react";
 import type { ChatMessage } from "../domain/models/chat-message";
 import type { ChatSession } from "../domain/models/chat-session";
+import type AgentClientPlugin from "../plugin";
 import { ChatExporter } from "../shared/chat-exporter";
 import { getLogger } from "../shared/logger";
-import { Notice } from "obsidian";
-import type AgentClientPlugin from "../plugin";
 
 // ============================================================================
 // Types
@@ -83,8 +83,7 @@ export function useAutoExport(plugin: AgentClientPlugin): UseAutoExportReturn {
 
 			try {
 				const exporter = new ChatExporter(plugin);
-				const openFile =
-					plugin.settings.exportSettings.openFileAfterExport;
+				const openFile = plugin.settings.exportSettings.openFileAfterExport;
 
 				const filePath = await exporter.exportToMarkdown(
 					messages,

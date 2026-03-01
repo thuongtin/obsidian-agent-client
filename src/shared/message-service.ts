@@ -12,27 +12,27 @@
  * - Handle authentication errors with retry logic
  */
 
-import type { IAgentClient } from "../domain/ports/agent-client.port";
-import type {
-	IVaultAccess,
-	NoteMetadata,
-	EditorPosition,
-} from "../domain/ports/vault-access.port";
-import { AcpErrorCode, type AcpError } from "../domain/models/agent-error";
-import {
-	extractErrorCode,
-	toAcpError,
-	isEmptyResponseError,
-} from "./acp-error-utils";
+import { type AcpError, AcpErrorCode } from "../domain/models/agent-error";
 import type { AuthenticationMethod } from "../domain/models/chat-session";
 import type {
-	PromptContent,
 	ImagePromptContent,
+	PromptContent,
 	ResourcePromptContent,
 } from "../domain/models/prompt-content";
+import type { IAgentClient } from "../domain/ports/agent-client.port";
+import type {
+	EditorPosition,
+	IVaultAccess,
+	NoteMetadata,
+} from "../domain/ports/vault-access.port";
+import {
+	extractErrorCode,
+	isEmptyResponseError,
+	toAcpError,
+} from "./acp-error-utils";
 import { extractMentionedNotes, type IMentionService } from "./mention-utils";
-import { convertWindowsPathToWsl } from "./wsl-utils";
 import { buildFileUri } from "./path-utils";
+import { convertWindowsPathToWsl } from "./wsl-utils";
 
 // ============================================================================
 // Types
@@ -163,11 +163,7 @@ export async function preparePrompt(
 
 	// Step 2: Build context based on agent capabilities
 	if (input.supportsEmbeddedContext) {
-		return preparePromptWithEmbeddedContext(
-			input,
-			vaultAccess,
-			mentionedNotes,
-		);
+		return preparePromptWithEmbeddedContext(input, vaultAccess, mentionedNotes);
 	} else {
 		return preparePromptWithTextContext(input, vaultAccess, mentionedNotes);
 	}
@@ -244,9 +240,7 @@ async function preparePromptWithEmbeddedContext(
 
 	// Build content arrays
 	const displayContent: PromptContent[] = [
-		...(input.message
-			? [{ type: "text" as const, text: input.message }]
-			: []),
+		...(input.message ? [{ type: "text" as const, text: input.message }] : []),
 		...(input.images || []),
 	];
 
@@ -281,8 +275,7 @@ async function preparePromptWithEmbeddedContext(
 					notePath: input.activeNote.path,
 					selection: input.activeNote.selection
 						? {
-								fromLine:
-									input.activeNote.selection.from.line + 1,
+								fromLine: input.activeNote.selection.from.line + 1,
 								toLine: input.activeNote.selection.to.line + 1,
 							}
 						: undefined,
@@ -367,17 +360,12 @@ async function preparePromptWithTextContext(
 	// Build agent message text (context blocks + auto-mention prefix + original message)
 	const agentMessageText =
 		contextBlocks.length > 0
-			? contextBlocks.join("\n") +
-				"\n\n" +
-				autoMentionPrefix +
-				input.message
+			? contextBlocks.join("\n") + "\n\n" + autoMentionPrefix + input.message
 			: autoMentionPrefix + input.message;
 
 	// Build content arrays
 	const displayContent: PromptContent[] = [
-		...(input.message
-			? [{ type: "text" as const, text: input.message }]
-			: []),
+		...(input.message ? [{ type: "text" as const, text: input.message }] : []),
 		...(input.images || []),
 	];
 
@@ -396,8 +384,7 @@ async function preparePromptWithTextContext(
 					notePath: input.activeNote.path,
 					selection: input.activeNote.selection
 						? {
-								fromLine:
-									input.activeNote.selection.from.line + 1,
+								fromLine: input.activeNote.selection.from.line + 1,
 								toLine: input.activeNote.selection.to.line + 1,
 							}
 						: undefined,
@@ -462,9 +449,7 @@ async function buildAutoMentionResource(
 					annotations: {
 						audience: ["assistant"],
 						priority: 0.8, // Selection is high priority
-						lastModified: new Date(
-							activeNote.modified,
-						).toISOString(),
+						lastModified: new Date(activeNote.modified).toISOString(),
 					},
 				} as ResourcePromptContent,
 				{
@@ -473,10 +458,7 @@ async function buildAutoMentionResource(
 				},
 			];
 		} catch (error) {
-			console.error(
-				`Failed to read selection from ${activeNote.path}:`,
-				error,
-			);
+			console.error(`Failed to read selection from ${activeNote.path}:`, error);
 			return [
 				{
 					type: "text",

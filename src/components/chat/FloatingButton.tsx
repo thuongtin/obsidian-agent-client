@@ -1,10 +1,11 @@
 import * as React from "react";
+
 const { useState, useRef, useEffect, useCallback, useMemo } = React;
-import { createRoot, type Root } from "react-dom/client";
 
 import { setIcon } from "obsidian";
-import type AgentClientPlugin from "../../plugin";
+import { createRoot, type Root } from "react-dom/client";
 import { useSettings } from "../../hooks/useSettings";
+import type AgentClientPlugin from "../../plugin";
 import { clampPosition } from "../../shared/floating-utils";
 
 interface VaultAdapterWithResourcePath {
@@ -129,10 +130,8 @@ function FloatingButtonComponent({ plugin }: FloatingButtonProps) {
 	const handleMouseDown = useCallback(
 		(e: React.MouseEvent) => {
 			// Compute current position (from state or CSS default)
-			const currentX =
-				position?.x ?? window.innerWidth - 40 - BUTTON_SIZE;
-			const currentY =
-				position?.y ?? window.innerHeight - 30 - BUTTON_SIZE;
+			const currentX = position?.x ?? window.innerWidth - 40 - BUTTON_SIZE;
+			const currentY = position?.y ?? window.innerHeight - 30 - BUTTON_SIZE;
 
 			setIsDragging(true);
 			wasDragged.current = false;
@@ -280,14 +279,10 @@ function FloatingButtonComponent({ plugin }: FloatingButtonProps) {
 					style={
 						position
 							? {
-									bottom:
-										window.innerHeight - position.y + 10,
-									...(position.x + MENU_MIN_WIDTH >
-									window.innerWidth
+									bottom: window.innerHeight - position.y + 10,
+									...(position.x + MENU_MIN_WIDTH > window.innerWidth
 										? {
-												right:
-													window.innerWidth -
-													(position.x + BUTTON_SIZE),
+												right: window.innerWidth - (position.x + BUTTON_SIZE),
 												left: "auto",
 												top: "auto",
 											}
