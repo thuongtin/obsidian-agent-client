@@ -220,7 +220,8 @@ export function useChatController(
 		[logger, agentSession],
 	);
 
-	const [isLoadingSessionHistory, setIsLoadingSessionHistory] = useState(false);
+	const [isLoadingSessionHistory, setIsLoadingSessionHistory] =
+		useState(false);
 
 	const handleLoadStart = useCallback(() => {
 		logger.log(
@@ -249,7 +250,8 @@ export function useChatController(
 	});
 
 	// Combined error info (session errors take precedence)
-	const errorInfo = sessionErrorInfo || chat.errorInfo || permission.errorInfo;
+	const errorInfo =
+		sessionErrorInfo || chat.errorInfo || permission.errorInfo;
 
 	// ============================================================
 	// Local State
@@ -272,13 +274,19 @@ export function useChatController(
 	const activeAgentLabel = useMemo(() => {
 		const activeId = session.agentId;
 		if (activeId === plugin.settings.claude.id) {
-			return plugin.settings.claude.displayName || plugin.settings.claude.id;
+			return (
+				plugin.settings.claude.displayName || plugin.settings.claude.id
+			);
 		}
 		if (activeId === plugin.settings.codex.id) {
-			return plugin.settings.codex.displayName || plugin.settings.codex.id;
+			return (
+				plugin.settings.codex.displayName || plugin.settings.codex.id
+			);
 		}
 		if (activeId === plugin.settings.gemini.id) {
-			return plugin.settings.gemini.displayName || plugin.settings.gemini.id;
+			return (
+				plugin.settings.gemini.displayName || plugin.settings.gemini.id
+			);
 		}
 		const custom = plugin.settings.customAgents.find(
 			(agent) => agent.id === activeId,
@@ -308,7 +316,10 @@ export function useChatController(
 
 			// Save session metadata locally on first message
 			if (isFirstMessage && session.sessionId) {
-				await sessionHistory.saveSessionLocally(session.sessionId, content);
+				await sessionHistory.saveSessionLocally(
+					session.sessionId,
+					content,
+				);
 				logger.log(
 					`[useChatController] Session saved locally: ${session.sessionId}`,
 				);
@@ -357,13 +368,19 @@ export function useChatController(
 
 			// Auto-export current chat before starting new one (if has messages)
 			if (messages.length > 0) {
-				await autoExport.autoExportIfEnabled("newChat", messages, session);
+				await autoExport.autoExportIfEnabled(
+					"newChat",
+					messages,
+					session,
+				);
 			}
 
 			autoMention.toggle(false);
 			chat.clearMessages();
 
-			const newAgentId = isAgentSwitch ? requestedAgentId : session.agentId;
+			const newAgentId = isAgentSwitch
+				? requestedAgentId
+				: session.agentId;
 			await agentSession.restartSession(newAgentId);
 
 			// Invalidate session history cache when creating new session
@@ -448,7 +465,9 @@ export function useChatController(
 	const handleRestoreSession = useCallback(
 		async (sessionId: string, cwd: string) => {
 			try {
-				logger.log(`[useChatController] Restoring session: ${sessionId}`);
+				logger.log(
+					`[useChatController] Restoring session: ${sessionId}`,
+				);
 				chat.clearMessages();
 				await sessionHistory.restoreSession(sessionId, cwd);
 				new Notice("[Agent Client] Session restored");
@@ -487,7 +506,9 @@ export function useChatController(
 				sessionTitle,
 				async () => {
 					try {
-						logger.log(`[useChatController] Deleting session: ${sessionId}`);
+						logger.log(
+							`[useChatController] Deleting session: ${sessionId}`,
+						);
 						await sessionHistory.deleteSession(sessionId);
 						new Notice("[Agent Client] Session deleted");
 					} catch (error) {
@@ -565,12 +586,18 @@ export function useChatController(
 	);
 
 	const handleEditMessage = useCallback(
-		(messageId: string, content: string) => {
-			if (isSending) return;
+		async (messageId: string, content: string) => {
+			if (isSending) {
+				// Cancel any ongoing generation first to prevent the ACP adapter
+				// from continuing to stream and overwriting our truncated state.
+				await agentSession.cancelOperation();
+			}
+			// Populate the input box with the original content
 			setInputValue(content);
+			// Remove the target message and everything after it from history
 			chat.truncateFromMessage(messageId);
 		},
-		[isSending, chat],
+		[isSending, chat, agentSession],
 	);
 
 	const handleRemoveMessage = useCallback(
@@ -601,7 +628,10 @@ export function useChatController(
 				const previousMessage = messages[userMsgIndex];
 				// Extract the user text
 				const userText = previousMessage.content
-					.filter((c) => c.type === "text" || c.type === "text_with_context")
+					.filter(
+						(c) =>
+							c.type === "text" || c.type === "text_with_context",
+					)
 					.map((c: any) => c.text || "")
 					.join("\n");
 
@@ -701,7 +731,9 @@ export function useChatController(
 	// Cleanup on unmount only - auto-export and close session
 	useEffect(() => {
 		return () => {
-			logger.log("[useChatController] Cleanup: auto-export and close session");
+			logger.log(
+				"[useChatController] Cleanup: auto-export and close session",
+			);
 			void (async () => {
 				await autoExportRef.current.autoExportIfEnabled(
 					"closeChat",
@@ -786,7 +818,12 @@ export function useChatController(
 		prevIsSendingRef.current = isSending;
 
 		// Save when turn ends (isSending: true → false) and has messages
-		if (wasSending && !isSending && session.sessionId && messages.length > 0) {
+		if (
+			wasSending &&
+			!isSending &&
+			session.sessionId &&
+			messages.length > 0
+		) {
 			sessionHistory.saveSessionMessages(session.sessionId, messages);
 			logger.log(
 				`[useChatController] Session messages saved: ${session.sessionId}`,

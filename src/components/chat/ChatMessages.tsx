@@ -32,8 +32,14 @@ export interface ChatMessagesProps {
 	/** ACP client for terminal operations */
 	acpClient?: IAcpClient;
 	/** Callback to approve a permission request */
-	onApprovePermission?: (requestId: string, optionId: string) => Promise<void>;
-	onEditMessage?: (messageId: string, content: string) => void;
+	onApprovePermission?: (
+		requestId: string,
+		optionId: string,
+	) => Promise<void>;
+	onEditMessage?: (
+		messageId: string,
+		content: string,
+	) => void | Promise<void>;
 	onDeleteMessage?: (messageId: string) => void;
 	onRegenerateMessage?: (messageId: string) => void;
 }
