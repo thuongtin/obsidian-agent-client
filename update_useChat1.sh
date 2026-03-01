@@ -1,0 +1,4 @@
+#!/bin/bash
+# Script to safely patch useChat.ts with messageMap logic.
+# Phase 1: State Initialization and computedFlatMessages.
+sed -i '' -e 's/const \[messages, setMessages\] = useState<ChatMessage\[\]>(\[\]);/const \[messageMap, setMessageMap\] = useState<Record<string, ChatMessage>>({});\n\tconst \[currentLeafId, setCurrentLeafId\] = useState<string | null>(null);\n\n\t\/\/ Compute flat messages array from map\n\tconst messages = useMemo(() => {\n\t\tif (!currentLeafId || Object.keys(messageMap).length === 0) return \[\];\n\n\t\tconst flat: ChatMessage\[\] = \[\];\n\t\tlet currId: string | null | undefined = currentLeafId;\n\t\tconst visited = new Set<string>();\n\n\t\twhile (currId && messageMap\[currId\] && !visited.has(currId)) {\n\t\t\tvisited.add(currId);\n\t\t\tflat.push(messageMap\[currId\]);\n\t\t\tcurrId = messageMap\[currId\].parentId;\n\t\t}\n\n\t\treturn flat.reverse();\n\t}, \[messageMap, currentLeafId\]);/g' src/hooks/useChat.ts

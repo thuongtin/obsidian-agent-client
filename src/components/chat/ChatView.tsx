@@ -98,6 +98,9 @@ function ChatComponent({
 		setAttachedImages,
 		restoredMessage,
 		handleRestoredMessageConsumed,
+		handleEditMessage,
+		handleRemoveMessage,
+		handleRegenerateMessage,
 	} = controller;
 
 	// ============================================================
@@ -530,6 +533,9 @@ function ChatComponent({
 				view={view}
 				acpClient={acpClientRef.current}
 				onApprovePermission={permission.approvePermission}
+				onEditMessage={handleEditMessage}
+				onDeleteMessage={handleRemoveMessage}
+				onRegenerateMessage={handleRegenerateMessage}
 			/>
 
 			<ChatInput
@@ -646,7 +652,9 @@ export class ChatView extends ItemView implements IChatViewContainer {
 
 		// Notify React when agentId is restored and differs from previous value
 		if (this.initialAgentId && this.initialAgentId !== previousAgentId) {
-			this.agentIdRestoredCallbacks.forEach((cb) => cb(this.initialAgentId!));
+			this.agentIdRestoredCallbacks.forEach((cb) => {
+				cb(this.initialAgentId!);
+			});
 		}
 	}
 

@@ -8,12 +8,15 @@ import type {
 import type AgentClientPlugin from "../../plugin";
 import { MessageContentRenderer } from "./MessageContentRenderer";
 
-interface MessageRendererProps {
+export interface MessageRendererProps {
 	message: ChatMessage;
 	plugin: AgentClientPlugin;
 	acpClient?: IAcpClient;
 	/** Callback to approve a permission request */
 	onApprovePermission?: (requestId: string, optionId: string) => Promise<void>;
+	onEditMessage?: (messageId: string, content: string) => void;
+	onDeleteMessage?: (messageId: string) => void;
+	onRegenerateMessage?: (messageId: string) => void;
 }
 
 /**
@@ -54,11 +57,21 @@ function groupContent(
 	return groups;
 }
 
+function extractTextContent(message: ChatMessage): string {
+	return message.content
+		.filter((c) => c.type === "text" || c.type === "text_with_context")
+		.map((c) => (c as any).text || "")
+		.join("\n");
+}
+
 export function MessageRenderer({
 	message,
 	plugin,
 	acpClient,
 	onApprovePermission,
+	onEditMessage,
+	onDeleteMessage,
+	onRegenerateMessage,
 }: MessageRendererProps) {
 	const groups = groupContent(message.content);
 
@@ -165,6 +178,56 @@ export function MessageRenderer({
 						)}
 					</div>
 				)}
+
+			{/* Action Toolbar */}
+			<div className="agent-client-message-toolbar">
+				<div className="agent-client-message-actions">
+					{message.role === "user" && onEditMessage && (
+						<button
+							className="agent-client-action-button"
+							title="Edit"
+							onClick={() => {
+								const text = extractTextContent(message);
+								onEditMessage(message.id, text);
+							}}
+							ref={(el) => {
+								if (el) setIcon(el, "pencil");
+							}}
+						/>
+					)}
+					<button
+						className="agent-client-action-button"
+						title="Copy"
+						onClick={async () => {
+							const text = extractTextContent(message);
+							await navigator.clipboard.writeText(text);
+						}}
+						ref={(el) => {
+							if (el) setIcon(el, "copy");
+						}}
+					/>
+					{message.role === "assistant" && onRegenerateMessage && (
+						<button
+							className="agent-client-action-button"
+							title="Regenerate"
+							onClick={() => onRegenerateMessage(message.id)}
+							ref={(el) => {
+								if (el) setIcon(el, "refresh-cw");
+							}}
+						/>
+					)}
+					{onDeleteMessage && (
+						<button
+							className="agent-client-action-button agent-client-action-danger"
+							title="Delete"
+							onClick={() => onDeleteMessage(message.id)}
+							ref={(el) => {
+								if (el) setIcon(el, "trash-2");
+							}}
+						/>
+					)}
+				</div>
+			</div>
 		</div>
 	);
 }

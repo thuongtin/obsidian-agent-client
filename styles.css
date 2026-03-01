@@ -184,6 +184,65 @@ If your plugin does not need CSS, delete this file.
 	color: var(--interactive-accent);
 }
 
+/* ===== Message Renderer & Toolbar ===== */
+.agent-client-message-renderer {
+	position: relative;
+}
+
+.agent-client-message-toolbar {
+	display: none;
+	position: absolute;
+	top: -12px;
+	right: 8px;
+	background-color: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+	z-index: 10;
+	padding: 2px;
+}
+
+.agent-client-message-renderer:hover .agent-client-message-toolbar {
+	display: flex;
+}
+
+.agent-client-message-actions {
+	display: flex;
+	gap: 2px;
+}
+
+.agent-client-action-button {
+	width: 24px;
+	height: 24px;
+	padding: 0 !important;
+	margin: 0 !important;
+	border: none !important;
+	border-radius: 4px !important;
+	background-color: transparent !important;
+	color: var(--text-muted);
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	box-shadow: none !important;
+	transition: all 0.2s ease;
+}
+
+.agent-client-action-button svg {
+	width: 14px;
+	height: 14px;
+	color: inherit;
+}
+
+.agent-client-action-button:hover {
+	background-color: var(--background-modifier-hover) !important;
+	color: var(--text-normal);
+}
+
+.agent-client-action-danger:hover {
+	color: var(--color-red) !important;
+}
+
 /* ===== Message Content Components ===== */
 
 /* Tool Call */
@@ -1007,9 +1066,11 @@ If your plugin does not need CSS, delete this file.
 
 /* Collapsible Thought */
 .agent-client-collapsible-thought {
-	font-style: italic;
 	color: var(--text-muted);
-	background-color: transparent;
+	background-color: var(--background-secondary-alt);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	padding: 8px;
 	font-size: 0.9em;
 	cursor: pointer;
 	overflow-wrap: break-word;
@@ -1018,27 +1079,60 @@ If your plugin does not need CSS, delete this file.
 	max-width: 100%;
 	margin-top: 8px;
 	margin-bottom: 12px;
+	transition: background-color 0.2s ease;
+}
+
+.agent-client-collapsible-thought:hover {
+	background-color: var(--background-secondary);
 }
 
 .agent-client-collapsible-thought-header {
 	display: flex;
 	align-items: center;
-	gap: 4px;
+	user-select: none;
+}
+
+.agent-client-collapsible-thought-title {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-weight: 500;
+	color: var(--text-normal);
+}
+
+.agent-client-collapsible-thought-icon-brain {
+	color: var(--text-muted);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+.agent-client-collapsible-thought-icon-brain svg {
+	width: 14px;
+	height: 14px;
 }
 
 .agent-client-collapsible-thought-icon {
-	font-size: 0.8em;
 	opacity: 0.7;
 	margin-left: auto;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+.agent-client-collapsible-thought-icon svg {
+	width: 14px;
+	height: 14px;
 }
 
 .agent-client-collapsible-thought-content {
-	margin-top: 8px;
-	padding-left: 16px;
+	margin-top: 10px;
+	padding-top: 10px;
+	border-top: 1px dashed var(--background-modifier-border);
 	user-select: text;
 	overflow-wrap: break-word;
 	word-wrap: break-word;
 	word-break: break-word;
+	font-style: italic;
+	opacity: 0.9;
 }
 
 /* Mention Dropdown */

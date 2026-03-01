@@ -93,6 +93,17 @@ export interface UseChatReturn {
 	setMessagesFromLocal: (localMessages: ChatMessage[]) => void;
 
 	/**
+	 * Delete a specific message by ID.
+	 */
+	removeMessage: (messageId: string) => void;
+
+	/**
+	 * Truncate the conversation starting from a specific message ID.
+	 * Removing this message and all subsequent messages.
+	 */
+	truncateFromMessage: (messageId: string) => void;
+
+	/**
 	 * Clear the current error.
 	 */
 	clearError: () => void;
@@ -627,6 +638,24 @@ export function useChat(
 	);
 
 	/**
+	 * Delete a specific message by ID.
+	 */
+	const removeMessage = useCallback((messageId: string): void => {
+		setMessages((prev) => prev.filter((m) => m.id !== messageId));
+	}, []);
+
+	/**
+	 * Truncate from specific message ID.
+	 */
+	const truncateFromMessage = useCallback((messageId: string): void => {
+		setMessages((prev) => {
+			const index = prev.findIndex((m) => m.id === messageId);
+			if (index === -1) return prev;
+			return prev.slice(0, index);
+		});
+	}, []);
+
+	/**
 	 * Clear the current error.
 	 */
 	const clearError = useCallback((): void => {
@@ -823,6 +852,8 @@ export function useChat(
 		clearMessages,
 		setInitialMessages,
 		setMessagesFromLocal,
+		removeMessage,
+		truncateFromMessage,
 		clearError,
 		addMessage,
 		updateLastMessage,

@@ -95,6 +95,9 @@ export interface UseChatControllerReturn {
 	handleOpenHistory: () => void;
 	handleSetMode: (modeId: string) => Promise<void>;
 	handleSetModel: (modelId: string) => Promise<void>;
+	handleEditMessage: (messageId: string, content: string) => void;
+	handleRemoveMessage: (messageId: string) => void;
+	handleRegenerateMessage: (messageId: string) => void;
 
 	// Input state (for broadcast commands - sidebar only)
 	inputValue: string;
@@ -561,6 +564,57 @@ export function useChatController(
 		[agentSession],
 	);
 
+	const handleEditMessage = useCallback(
+		(messageId: string, content: string) => {
+			if (isSending) return;
+			setInputValue(content);
+			chat.truncateFromMessage(messageId);
+		},
+		[isSending, chat],
+	);
+
+	const handleRemoveMessage = useCallback(
+		(messageId: string) => {
+			if (isSending) return;
+			chat.removeMessage(messageId);
+		},
+		[isSending, chat],
+	);
+
+	const handleRegenerateMessage = useCallback(
+		(messageId: string) => {
+			if (isSending) return;
+			// Find the message index
+			const idx = messages.findIndex((m) => m.id === messageId);
+			if (idx <= 0) return; // Cannot regenerate if it's the first message or not found
+
+			// Find the last user message before this assistant message
+			let userMsgIndex = -1;
+			for (let i = idx - 1; i >= 0; i--) {
+				if (messages[i].role === "user") {
+					userMsgIndex = i;
+					break;
+				}
+			}
+
+			if (userMsgIndex >= 0) {
+				const previousMessage = messages[userMsgIndex];
+				// Extract the user text
+				const userText = previousMessage.content
+					.filter((c) => c.type === "text" || c.type === "text_with_context")
+					.map((c: any) => c.text || "")
+					.join("\n");
+
+				// Truncate from the user message to remove it and all subsequent messages
+				chat.truncateFromMessage(previousMessage.id);
+
+				// Resend
+				void handleSendMessage(userText);
+			}
+		},
+		[isSending, messages, chat, handleSendMessage],
+	);
+
 	// Update modal props when session history state changes
 	useEffect(() => {
 		if (historyModalRef.current) {
@@ -810,6 +864,9 @@ export function useChatController(
 		handleOpenHistory,
 		handleSetMode,
 		handleSetModel,
+		handleEditMessage,
+		handleRemoveMessage,
+		handleRegenerateMessage,
 
 		// Input state
 		inputValue,
