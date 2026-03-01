@@ -98,9 +98,7 @@ function ChatComponent({
 		setAttachedImages,
 		restoredMessage,
 		handleRestoredMessageConsumed,
-		handleEditMessage,
 		handleRemoveMessage,
-		handleRegenerateMessage,
 	} = controller;
 
 	// ============================================================
@@ -533,9 +531,7 @@ function ChatComponent({
 				view={view}
 				acpClient={acpClientRef.current}
 				onApprovePermission={permission.approvePermission}
-				onEditMessage={handleEditMessage}
 				onDeleteMessage={handleRemoveMessage}
-				onRegenerateMessage={handleRegenerateMessage}
 			/>
 
 			<ChatInput

@@ -32,16 +32,8 @@ export interface ChatMessagesProps {
 	/** ACP client for terminal operations */
 	acpClient?: IAcpClient;
 	/** Callback to approve a permission request */
-	onApprovePermission?: (
-		requestId: string,
-		optionId: string,
-	) => Promise<void>;
-	onEditMessage?: (
-		messageId: string,
-		content: string,
-	) => void | Promise<void>;
+	onApprovePermission?: (requestId: string, optionId: string) => Promise<void>;
 	onDeleteMessage?: (messageId: string) => void;
-	onRegenerateMessage?: (messageId: string) => void;
 }
 
 /**
@@ -64,9 +56,7 @@ export function ChatMessages({
 	view,
 	acpClient,
 	onApprovePermission,
-	onEditMessage,
 	onDeleteMessage,
-	onRegenerateMessage,
 }: ChatMessagesProps) {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const [isAtBottom, setIsAtBottom] = useState(true);
@@ -140,9 +130,7 @@ export function ChatMessages({
 							plugin={plugin}
 							acpClient={acpClient}
 							onApprovePermission={onApprovePermission}
-							onEditMessage={onEditMessage}
 							onDeleteMessage={onDeleteMessage}
-							onRegenerateMessage={onRegenerateMessage}
 						/>
 					))}
 					<div

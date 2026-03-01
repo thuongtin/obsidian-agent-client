@@ -13,16 +13,8 @@ export interface MessageRendererProps {
 	plugin: AgentClientPlugin;
 	acpClient?: IAcpClient;
 	/** Callback to approve a permission request */
-	onApprovePermission?: (
-		requestId: string,
-		optionId: string,
-	) => Promise<void>;
-	onEditMessage?: (
-		messageId: string,
-		content: string,
-	) => void | Promise<void>;
+	onApprovePermission?: (requestId: string, optionId: string) => Promise<void>;
 	onDeleteMessage?: (messageId: string) => void;
-	onRegenerateMessage?: (messageId: string) => void;
 }
 
 /**
@@ -69,15 +61,20 @@ function extractTextContent(message: ChatMessage): string {
 		.map((c) => (c as any).text || "")
 		.join("\n");
 }
+function createGroupKey(id: string, idx: number) {
+	return `grp-${id}-${idx}`;
+}
+
+function createItemKey(id: string, idx: number, sub: number) {
+	return `itm-${id}-${idx}-${sub}`;
+}
 
 export function MessageRenderer({
 	message,
 	plugin,
 	acpClient,
 	onApprovePermission,
-	onEditMessage,
 	onDeleteMessage,
-	onRegenerateMessage,
 }: MessageRendererProps) {
 	const groups = groupContent(message.content);
 
@@ -90,26 +87,27 @@ export function MessageRenderer({
 					// Render images in horizontal scroll container
 					return (
 						<div
-							key={idx}
+							key={createGroupKey(message.id, idx)}
 							className="agent-client-message-images-strip"
 						>
 							{group.items.map((content, imgIdx) => (
-								<MessageContentRenderer
-									key={imgIdx}
-									content={content}
-									plugin={plugin}
-									messageId={message.id}
-									messageRole={message.role}
-									acpClient={acpClient}
-									onApprovePermission={onApprovePermission}
-								/>
+								<React.Fragment key={createItemKey(message.id, idx, imgIdx)}>
+									<MessageContentRenderer
+										content={content}
+										plugin={plugin}
+										messageId={message.id}
+										messageRole={message.role}
+										acpClient={acpClient}
+										onApprovePermission={onApprovePermission}
+									/>
+								</React.Fragment>
 							))}
 						</div>
 					);
 				} else {
 					// Render single non-image content
 					return (
-						<div key={idx}>
+						<div key={createGroupKey(message.id, idx)}>
 							<MessageContentRenderer
 								content={group.item}
 								plugin={plugin}
@@ -174,20 +172,8 @@ export function MessageRenderer({
 			{/* Action Toolbar */}
 			<div className="agent-client-message-toolbar">
 				<div className="agent-client-message-actions">
-					{message.role === "user" && onEditMessage && (
-						<button
-							className="agent-client-action-button"
-							title="Edit"
-							onClick={() => {
-								const text = extractTextContent(message);
-								onEditMessage(message.id, text);
-							}}
-							ref={(el) => {
-								if (el) setIcon(el, "pencil");
-							}}
-						/>
-					)}
 					<button
+						type="button"
 						className="agent-client-action-button"
 						title="Copy"
 						onClick={async () => {
@@ -198,18 +184,10 @@ export function MessageRenderer({
 							if (el) setIcon(el, "copy");
 						}}
 					/>
-					{message.role === "assistant" && onRegenerateMessage && (
-						<button
-							className="agent-client-action-button"
-							title="Regenerate"
-							onClick={() => onRegenerateMessage(message.id)}
-							ref={(el) => {
-								if (el) setIcon(el, "refresh-cw");
-							}}
-						/>
-					)}
+
 					{onDeleteMessage && (
 						<button
+							type="button"
 							className="agent-client-action-button agent-client-action-danger"
 							title="Delete"
 							onClick={() => onDeleteMessage(message.id)}
