@@ -25,7 +25,10 @@ import type {
 	LoadSessionResult,
 	ResumeSessionResult,
 } from "../models/session-info";
-import type { SessionUpdate } from "../models/session-update";
+import type {
+	SessionConfigOption,
+	SessionUpdate,
+} from "../models/session-update";
 
 /**
  * Runtime configuration for launching an AI agent process.
@@ -201,19 +204,14 @@ export interface NewSessionResult {
 	/** Unique identifier for the new session */
 	sessionId: string;
 
-	/**
-	 * Mode state for this session.
-	 * Contains available modes and the currently active mode.
-	 * Undefined if the agent does not support modes.
-	 */
+	/** @deprecated Use configOptions instead. Kept for backward compatibility. */
 	modes?: SessionModeState;
 
-	/**
-	 * Model state for this session (experimental).
-	 * Contains available models and the currently active model.
-	 * Undefined if the agent does not support model selection.
-	 */
+	/** @deprecated Use configOptions instead. Kept for backward compatibility. */
 	models?: SessionModelState;
+
+	/** Session config options (supersedes modes/models) */
+	configOptions?: SessionConfigOption[];
 }
 
 /**
@@ -356,6 +354,8 @@ export interface IAgentClient {
 	getCurrentAgentId(): string | null;
 
 	/**
+	 * @deprecated Use setSessionConfigOption instead.
+	 *
 	 * Set the session mode.
 	 *
 	 * Changes the agent's operating mode for the current session.
@@ -371,11 +371,31 @@ export interface IAgentClient {
 	setSessionMode(sessionId: string, modeId: string): Promise<void>;
 
 	/**
+	 * @deprecated Use setSessionConfigOption instead.
+	 *
 	 * Set the session model (experimental).
 	 * @param sessionId - The session ID
 	 * @param modelId - The model ID to set
 	 */
 	setSessionModel(sessionId: string, modelId: string): Promise<void>;
+
+	/**
+	 * Set a session configuration option.
+	 *
+	 * Sends a config option change to the agent. The response contains the
+	 * complete set of all config options with their current values, as changing
+	 * one option may affect others.
+	 *
+	 * @param sessionId - Session identifier
+	 * @param configId - ID of the config option to change
+	 * @param value - New value to set
+	 * @returns Updated list of all config options
+	 */
+	setSessionConfigOption(
+		sessionId: string,
+		configId: string,
+		value: string,
+	): Promise<SessionConfigOption[]>;
 
 	// ========================================================================
 	// Session Management Methods
