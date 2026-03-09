@@ -13,6 +13,11 @@ import type {
 	SessionModelState,
 	SessionModeState,
 } from "../domain/models/chat-session";
+import type {
+	SessionConfigOption,
+	SessionConfigSelectGroup,
+	SessionConfigSelectOption,
+} from "../domain/models/session-update";
 import type { ImagePromptContent } from "../domain/models/prompt-content";
 import type AgentClientPlugin from "../plugin";
 import { ChatExporter } from "../shared/chat-exporter";
@@ -27,6 +32,17 @@ import { useSessionHistory } from "./useSessionHistory";
 // Hooks imports
 import { useSettings } from "./useSettings";
 import { useSlashCommands } from "./useSlashCommands";
+
+/**
+ * Flatten config option values, handling both flat and grouped options.
+ */
+function flattenConfigOptions(
+	options: SessionConfigSelectOption[] | SessionConfigSelectGroup[],
+): SessionConfigSelectOption[] {
+	if (options.length === 0) return [];
+	if ("value" in options[0]) return options as SessionConfigSelectOption[];
+	return (options as SessionConfigSelectGroup[]).flatMap((g) => g.options);
+}
 
 // Agent info for display (from plugin.getAvailableAgents())
 interface AgentInfo {
@@ -95,7 +111,7 @@ export interface UseChatControllerReturn {
 	handleOpenHistory: () => void;
 	handleSetMode: (modeId: string) => Promise<void>;
 	handleSetModel: (modelId: string) => Promise<void>;
-	handleRemoveMessage: (messageId: string) => void;
+	handleSetConfigOption: (configId: string, value: string) => Promise<void>;
 
 	// Input state (for broadcast commands - sidebar only)
 	inputValue: string;
@@ -205,20 +221,28 @@ export function useChatController(
 			sessionId: string,
 			modes?: SessionModeState,
 			models?: SessionModelState,
+			configOptions?: SessionConfigOption[],
 		) => {
 			logger.log(
 				`[useChatController] Session loaded/resumed/forked: ${sessionId}`,
 				{
 					modes,
 					models,
+					configOptions,
 				},
 			);
-			agentSession.updateSessionFromLoad(sessionId, modes, models);
+			agentSession.updateSessionFromLoad(
+				sessionId,
+				modes,
+				models,
+				configOptions,
+			);
 		},
 		[logger, agentSession],
 	);
 
-	const [isLoadingSessionHistory, setIsLoadingSessionHistory] = useState(false);
+	const [isLoadingSessionHistory, setIsLoadingSessionHistory] =
+		useState(false);
 
 	const handleLoadStart = useCallback(() => {
 		logger.log(
@@ -247,7 +271,8 @@ export function useChatController(
 	});
 
 	// Combined error info (session errors take precedence)
-	const errorInfo = sessionErrorInfo || chat.errorInfo || permission.errorInfo;
+	const errorInfo =
+		sessionErrorInfo || chat.errorInfo || permission.errorInfo;
 
 	// ============================================================
 	// Local State
@@ -270,13 +295,19 @@ export function useChatController(
 	const activeAgentLabel = useMemo(() => {
 		const activeId = session.agentId;
 		if (activeId === plugin.settings.claude.id) {
-			return plugin.settings.claude.displayName || plugin.settings.claude.id;
+			return (
+				plugin.settings.claude.displayName || plugin.settings.claude.id
+			);
 		}
 		if (activeId === plugin.settings.codex.id) {
-			return plugin.settings.codex.displayName || plugin.settings.codex.id;
+			return (
+				plugin.settings.codex.displayName || plugin.settings.codex.id
+			);
 		}
 		if (activeId === plugin.settings.gemini.id) {
-			return plugin.settings.gemini.displayName || plugin.settings.gemini.id;
+			return (
+				plugin.settings.gemini.displayName || plugin.settings.gemini.id
+			);
 		}
 		const custom = plugin.settings.customAgents.find(
 			(agent) => agent.id === activeId,
@@ -306,7 +337,10 @@ export function useChatController(
 
 			// Save session metadata locally on first message
 			if (isFirstMessage && session.sessionId) {
-				await sessionHistory.saveSessionLocally(session.sessionId, content);
+				await sessionHistory.saveSessionLocally(
+					session.sessionId,
+					content,
+				);
 				logger.log(
 					`[useChatController] Session saved locally: ${session.sessionId}`,
 				);
@@ -355,13 +389,19 @@ export function useChatController(
 
 			// Auto-export current chat before starting new one (if has messages)
 			if (messages.length > 0) {
-				await autoExport.autoExportIfEnabled("newChat", messages, session);
+				await autoExport.autoExportIfEnabled(
+					"newChat",
+					messages,
+					session,
+				);
 			}
 
 			autoMention.toggle(false);
 			chat.clearMessages();
 
-			const newAgentId = isAgentSwitch ? requestedAgentId : session.agentId;
+			const newAgentId = isAgentSwitch
+				? requestedAgentId
+				: session.agentId;
 			await agentSession.restartSession(newAgentId);
 
 			// Invalidate session history cache when creating new session
@@ -446,7 +486,9 @@ export function useChatController(
 	const handleRestoreSession = useCallback(
 		async (sessionId: string, cwd: string) => {
 			try {
-				logger.log(`[useChatController] Restoring session: ${sessionId}`);
+				logger.log(
+					`[useChatController] Restoring session: ${sessionId}`,
+				);
 				chat.clearMessages();
 				await sessionHistory.restoreSession(sessionId, cwd);
 				new Notice("[Agent Client] Session restored");
@@ -485,7 +527,9 @@ export function useChatController(
 				sessionTitle,
 				async () => {
 					try {
-						logger.log(`[useChatController] Deleting session: ${sessionId}`);
+						logger.log(
+							`[useChatController] Deleting session: ${sessionId}`,
+						);
 						await sessionHistory.deleteSession(sessionId);
 						new Notice("[Agent Client] Session deleted");
 					} catch (error) {
@@ -562,12 +606,11 @@ export function useChatController(
 		[agentSession],
 	);
 
-	const handleRemoveMessage = useCallback(
-		(messageId: string) => {
-			if (isSending) return;
-			chat.removeMessage(messageId);
+	const handleSetConfigOption = useCallback(
+		async (configId: string, value: string) => {
+			await agentSession.setConfigOption(configId, value);
 		},
-		[isSending, chat],
+		[agentSession],
 	);
 
 	// Update modal props when session history state changes
@@ -622,9 +665,35 @@ export function useChatController(
 		void agentSession.createSession(config?.agent || initialAgentId);
 	}, [agentSession.createSession, config?.agent, initialAgentId, logger.log]);
 
-	// TODO(code-block): Apply configured model when session is ready
+	// Apply configured model when session is ready
 	useEffect(() => {
-		if (config?.model && isSessionReady && session.models) {
+		if (!config?.model || !isSessionReady) return;
+
+		// Prefer configOptions if available
+		if (session.configOptions) {
+			const modelOption = session.configOptions.find(
+				(o) => o.category === "model",
+			);
+			if (modelOption && modelOption.currentValue !== config.model) {
+				const valueExists = flattenConfigOptions(
+					modelOption.options,
+				).some((o) => o.value === config.model);
+				if (valueExists) {
+					logger.log(
+						"[useChatController] Applying configured model via configOptions:",
+						config.model,
+					);
+					void agentSession.setConfigOption(
+						modelOption.id,
+						config.model,
+					);
+				}
+			}
+			return;
+		}
+
+		// Fallback to legacy models
+		if (session.models) {
 			const modelExists = session.models.availableModels.some(
 				(m) => m.modelId === config.model,
 			);
@@ -639,7 +708,9 @@ export function useChatController(
 	}, [
 		config?.model,
 		isSessionReady,
+		session.configOptions,
 		session.models,
+		agentSession.setConfigOption,
 		agentSession.setModel,
 		logger,
 	]);
@@ -657,7 +728,9 @@ export function useChatController(
 	// Cleanup on unmount only - auto-export and close session
 	useEffect(() => {
 		return () => {
-			logger.log("[useChatController] Cleanup: auto-export and close session");
+			logger.log(
+				"[useChatController] Cleanup: auto-export and close session",
+			);
 			void (async () => {
 				await autoExportRef.current.autoExportIfEnabled(
 					"closeChat",
@@ -690,6 +763,8 @@ export function useChatController(
 					agentSession.updateAvailableCommands(update.commands);
 				} else if (update.type === "current_mode_update") {
 					agentSession.updateCurrentMode(update.currentModeId);
+				} else if (update.type === "config_option_update") {
+					agentSession.updateConfigOptions(update.configOptions);
 				}
 				// Ignore all message-related updates (history replay)
 				return;
@@ -703,6 +778,8 @@ export function useChatController(
 				agentSession.updateAvailableCommands(update.commands);
 			} else if (update.type === "current_mode_update") {
 				agentSession.updateCurrentMode(update.currentModeId);
+			} else if (update.type === "config_option_update") {
+				agentSession.updateConfigOptions(update.configOptions);
 			}
 		});
 	}, [
@@ -742,7 +819,12 @@ export function useChatController(
 		prevIsSendingRef.current = isSending;
 
 		// Save when turn ends (isSending: true → false) and has messages
-		if (wasSending && !isSending && session.sessionId && messages.length > 0) {
+		if (
+			wasSending &&
+			!isSending &&
+			session.sessionId &&
+			messages.length > 0
+		) {
 			sessionHistory.saveSessionMessages(session.sessionId, messages);
 			logger.log(
 				`[useChatController] Session messages saved: ${session.sessionId}`,
@@ -820,7 +902,7 @@ export function useChatController(
 		handleOpenHistory,
 		handleSetMode,
 		handleSetModel,
-		handleRemoveMessage,
+		handleSetConfigOption,
 
 		// Input state
 		inputValue,
