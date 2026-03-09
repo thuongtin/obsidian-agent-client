@@ -1,4 +1,4 @@
-import { FileSystemAdapter, Notice } from "obsidian";
+import { FileSystemAdapter, Notice, Platform } from "obsidian";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { IAcpClient } from "../adapters/acp/acp.adapter";
 // Service imports
@@ -6,6 +6,7 @@ import { NoteMentionService } from "../adapters/obsidian/mention-service";
 // Adapter imports
 import { ObsidianVaultAdapter } from "../adapters/obsidian/vault.adapter";
 import { ConfirmDeleteModal } from "../components/chat/ConfirmDeleteModal";
+import type { AttachedFile } from "../domain/models/chat-input-state";
 import type { AttachedImage } from "../components/chat/ImagePreviewStrip";
 import { SessionHistoryModal } from "../components/chat/SessionHistoryModal";
 // Domain model imports
@@ -18,7 +19,12 @@ import type {
 	SessionConfigSelectGroup,
 	SessionConfigSelectOption,
 } from "../domain/models/session-update";
-import type { ImagePromptContent } from "../domain/models/prompt-content";
+import type {
+	ImagePromptContent,
+	ResourceLinkPromptContent,
+} from "../domain/models/prompt-content";
+import { buildFileUri } from "../shared/path-utils";
+import { convertWindowsPathToWsl } from "../shared/wsl-utils";
 import type AgentClientPlugin from "../plugin";
 import { ChatExporter } from "../shared/chat-exporter";
 import { getLogger, type Logger } from "../shared/logger";
