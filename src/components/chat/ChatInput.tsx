@@ -1,8 +1,35 @@
 import * as React from "react";
 
+<<<<<<< HEAD
 const { useRef, useState, useEffect, useCallback } = React;
 
 import { DropdownComponent, Notice, setIcon } from "obsidian";
+=======
+import type AgentClientPlugin from "../../plugin";
+import type { IChatViewHost } from "./types";
+import type { NoteMetadata } from "../../domain/ports/vault-access.port";
+import type {
+	SlashCommand,
+	SessionModeState,
+	SessionModelState,
+	SessionUsage,
+} from "../../domain/models/chat-session";
+import type {
+	SessionConfigOption,
+	SessionConfigSelectGroup,
+} from "../../domain/models/session-update";
+import { flattenConfigSelectOptions } from "../../shared/config-option-utils";
+import type { AttachedFile } from "../../domain/models/chat-input-state";
+import type { UseMentionsReturn } from "../../hooks/useMentions";
+import type { UseSlashCommandsReturn } from "../../hooks/useSlashCommands";
+import type { UseAutoMentionReturn } from "../../hooks/useAutoMention";
+import type { ChatMessage } from "../../domain/models/chat-message";
+import { SuggestionDropdown } from "./SuggestionDropdown";
+import { ErrorOverlay } from "./ErrorOverlay";
+import { AttachmentPreviewStrip } from "./AttachmentPreviewStrip";
+import { useInputHistory } from "../../hooks/useInputHistory";
+import { getLogger } from "../../shared/logger";
+>>>>>>> aeab217 (feat: support non-image file attachments in chat input)
 import type { ErrorInfo } from "../../domain/models/agent-error";
 import type { ChatMessage } from "../../domain/models/chat-message";
 import type {
@@ -34,8 +61,8 @@ const MAX_IMAGE_SIZE_MB = 5;
 /** Maximum image size in bytes */
 const MAX_IMAGE_SIZE_BYTES = MAX_IMAGE_SIZE_MB * 1024 * 1024;
 
-/** Maximum number of images per message */
-const MAX_IMAGE_COUNT = 10;
+/** Maximum number of attachments per message (images + files combined) */
+const MAX_ATTACHMENT_COUNT = 10;
 
 /** Supported image MIME types (whitelist) */
 const SUPPORTED_IMAGE_TYPES = [
@@ -77,10 +104,10 @@ export interface ChatInputProps {
 	plugin: AgentClientPlugin;
 	/** View instance for event registration */
 	view: IChatViewHost;
-	/** Callback to send a message with optional images */
+	/** Callback to send a message with optional attachments */
 	onSendMessage: (
 		content: string,
-		images?: ImagePromptContent[],
+		attachments?: AttachedFile[],
 	) => Promise<void>;
 	/** Callback to stop the current generation */
 	onStopGeneration: () => Promise<void>;
@@ -103,10 +130,10 @@ export interface ChatInputProps {
 	inputValue: string;
 	/** Callback when input text changes */
 	onInputChange: (value: string) => void;
-	/** Currently attached images */
-	attachedImages: AttachedImage[];
-	/** Callback when attached images change */
-	onAttachedImagesChange: (images: AttachedImage[]) => void;
+	/** Currently attached files (images and non-image files) */
+	attachedFiles: AttachedFile[];
+	/** Callback when attached files change */
+	onAttachedFilesChange: (files: AttachedFile[]) => void;
 	/** Error information to display as overlay */
 	errorInfo: ErrorInfo | null;
 	/** Callback to clear the error */
@@ -153,8 +180,8 @@ export function ChatInput({
 	// Controlled component props
 	inputValue,
 	onInputChange,
-	attachedImages,
-	onAttachedImagesChange,
+	attachedFiles,
+	onAttachedFilesChange,
 	// Error overlay props
 	errorInfo,
 	onClearError,
@@ -192,34 +219,38 @@ export function ChatInput({
 	const modelDropdownRef = useRef<HTMLDivElement>(null);
 	const modelDropdownInstance = useRef<DropdownComponent | null>(null);
 
-	// Clear attached images when agent changes
+	// Clear attached files when agent changes
 	useEffect(() => {
-		onAttachedImagesChange([]);
-	}, [agentId, onAttachedImagesChange]);
+		onAttachedFilesChange([]);
+	}, [agentId, onAttachedFilesChange]);
 
 	/**
-	 * Add an image to the attached images list.
-	 * Simple addition - validation is done in handlePaste.
+	 * Add a file to the attached files list.
+	 * Simple addition - validation is done in caller.
 	 */
-	const addImage = useCallback(
-		(image: AttachedImage) => {
+	const addFile = useCallback(
+		(file: AttachedFile) => {
 			// Safety check for max count
-			if (attachedImages.length >= MAX_IMAGE_COUNT) {
+			if (attachedFiles.length >= MAX_ATTACHMENT_COUNT) {
 				return;
 			}
-			onAttachedImagesChange([...attachedImages, image]);
+			onAttachedFilesChange([...attachedFiles, file]);
 		},
-		[attachedImages, onAttachedImagesChange],
+		[attachedFiles, onAttachedFilesChange],
 	);
 
 	/**
-	 * Remove an image from the attached images list.
+	 * Remove a file from the attached files list.
 	 */
-	const removeImage = useCallback(
+	const removeFile = useCallback(
 		(id: string) => {
+<<<<<<< HEAD
 			onAttachedImagesChange(attachedImages.filter((img) => img.id !== id));
+=======
+			onAttachedFilesChange(attachedFiles.filter((f) => f.id !== id));
+>>>>>>> aeab217 (feat: support non-image file attachments in chat input)
 		},
-		[attachedImages, onAttachedImagesChange],
+		[attachedFiles, onAttachedFilesChange],
 	);
 
 	/**
@@ -240,7 +271,7 @@ export function ChatInput({
 	}, []);
 
 	/**
-	 * Process and attach image files.
+	 * Process and attach image files as Base64.
 	 * Common logic for paste and drop handlers.
 	 */
 	const processImageFiles = useCallback(
@@ -248,10 +279,10 @@ export function ChatInput({
 			let addedCount = 0;
 
 			for (const file of files) {
-				// Check image count
-				if (attachedImages.length + addedCount >= MAX_IMAGE_COUNT) {
+				// Check attachment count
+				if (attachedFiles.length + addedCount >= MAX_ATTACHMENT_COUNT) {
 					new Notice(
-						`[Agent Client] Maximum ${MAX_IMAGE_COUNT} images allowed`,
+						`[Agent Client] Maximum ${MAX_ATTACHMENT_COUNT} attachments allowed`,
 					);
 					break;
 				}
@@ -267,8 +298,9 @@ export function ChatInput({
 				// Convert to Base64 and add
 				try {
 					const base64 = await fileToBase64(file);
-					addImage({
+					addFile({
 						id: crypto.randomUUID(),
+						kind: "image",
 						data: base64,
 						mimeType: file.type,
 					});
@@ -279,7 +311,49 @@ export function ChatInput({
 				}
 			}
 		},
-		[attachedImages.length, addImage, fileToBase64],
+		[attachedFiles.length, addFile, fileToBase64],
+	);
+
+	/**
+	 * Process files as resource_link references (no Base64 conversion).
+	 * Used for non-image files and for image files when agent lacks image capability.
+	 */
+	const processFileReferences = useCallback(
+		(files: File[]) => {
+			// Get file path via Electron's webUtils API (File.path was removed in Electron 32)
+			// eslint-disable-next-line @typescript-eslint/no-require-imports
+			const { webUtils } = require("electron") as {
+				webUtils: { getPathForFile: (file: File) => string };
+			};
+
+			let addedCount = 0;
+
+			for (const file of files) {
+				if (attachedFiles.length + addedCount >= MAX_ATTACHMENT_COUNT) {
+					new Notice(
+						`[Agent Client] Maximum ${MAX_ATTACHMENT_COUNT} attachments allowed`,
+					);
+					break;
+				}
+
+				const filePath = webUtils.getPathForFile(file);
+				if (!filePath) {
+					new Notice("[Agent Client] Could not determine file path");
+					continue;
+				}
+
+				addFile({
+					id: crypto.randomUUID(),
+					kind: "file",
+					mimeType: file.type || "application/octet-stream",
+					name: file.name,
+					path: filePath,
+					size: file.size,
+				});
+				addedCount++;
+			}
+		},
+		[attachedFiles.length, addFile],
 	);
 
 	/**
@@ -305,7 +379,7 @@ export function ChatInput({
 
 			if (!supportsImages) {
 				new Notice(
-					"[Agent Client] This agent does not support image attachments",
+					"[Agent Client] This agent does not support image paste. Try drag & drop instead.",
 				);
 				return;
 			}
@@ -350,7 +424,9 @@ export function ChatInput({
 	}, []);
 
 	/**
-	 * Handle drop event for image files.
+	 * Handle drop event for file attachments.
+	 * Images are embedded as Base64 if agent supports it, otherwise sent as resource_link.
+	 * Non-image files are always sent as resource_link.
 	 */
 	const handleDrop = useCallback(
 		async (e: React.DragEvent) => {
@@ -360,25 +436,41 @@ export function ChatInput({
 			const files = e.dataTransfer?.files;
 			if (!files || files.length === 0) return;
 
-			// Filter to supported image types
-			const imageFiles = Array.from(files).filter((file) =>
-				SUPPORTED_IMAGE_TYPES.includes(file.type as SupportedImageType),
-			);
-
-			if (imageFiles.length === 0) return;
-
 			e.preventDefault();
 
-			if (!supportsImages) {
-				new Notice(
-					"[Agent Client] This agent does not support image attachments",
-				);
-				return;
+			const droppedFiles = Array.from(files);
+			const imageFiles: File[] = [];
+			const nonImageFiles: File[] = [];
+
+			for (const file of droppedFiles) {
+				if (
+					SUPPORTED_IMAGE_TYPES.includes(
+						file.type as SupportedImageType,
+					)
+				) {
+					imageFiles.push(file);
+				} else if (file.type || file.name) {
+					nonImageFiles.push(file);
+				}
 			}
 
-			await processImageFiles(imageFiles);
+			// Process image files
+			if (imageFiles.length > 0) {
+				if (supportsImages) {
+					// Agent supports images → embed as Base64
+					await processImageFiles(imageFiles);
+				} else {
+					// Agent doesn't support images → fallback to resource_link
+					processFileReferences(imageFiles);
+				}
+			}
+
+			// Process non-image files as resource_link
+			if (nonImageFiles.length > 0) {
+				processFileReferences(nonImageFiles);
+			}
 		},
-		[supportsImages, processImageFiles],
+		[supportsImages, processImageFiles, processFileReferences],
 	);
 
 	/**
@@ -506,7 +598,7 @@ export function ChatInput({
 			} else {
 				// Send button - active when has input (text or images)
 				const hasContent =
-					inputValue.trim() !== "" || attachedImages.length > 0;
+					inputValue.trim() !== "" || attachedFiles.length > 0;
 				svg.classList.add(
 					hasContent
 						? "agent-client-icon-active"
@@ -514,41 +606,54 @@ export function ChatInput({
 				);
 			}
 		},
-		[isSending, inputValue, attachedImages.length],
+		[isSending, inputValue, attachedFiles.length],
 	);
 
 	/**
 	 * Handle sending the current input as a message.
 	 */
+<<<<<<< HEAD
 	const handleSend = useCallback(async () => {
 		// Allow sending if there's text OR images
 		if (!inputValue.trim() && attachedImages.length === 0) return;
+=======
+	const handleSendOrStop = useCallback(async () => {
+		if (isSending) {
+			await onStopGeneration();
+			return;
+		}
 
-		// Save input value and images before clearing
+		// Allow sending if there's text OR attachments
+		if (!inputValue.trim() && attachedFiles.length === 0) return;
+>>>>>>> aeab217 (feat: support non-image file attachments in chat input)
+
+		// Save input value and files before clearing
 		const messageToSend = inputValue.trim();
+<<<<<<< HEAD
 		const imagesToSend: ImagePromptContent[] = attachedImages.map((img) => ({
 			type: "image",
 			data: img.data,
 			mimeType: img.mimeType,
 		}));
+=======
+		const filesToSend =
+			attachedFiles.length > 0 ? [...attachedFiles] : undefined;
+>>>>>>> aeab217 (feat: support non-image file attachments in chat input)
 
-		// Clear input, images, and hint state immediately
+		// Clear input, files, and hint state immediately
 		onInputChange("");
-		onAttachedImagesChange([]);
+		onAttachedFilesChange([]);
 		setHintText(null);
 		setCommandText("");
 		resetHistory();
 
-		await onSendMessage(
-			messageToSend,
-			imagesToSend.length > 0 ? imagesToSend : undefined,
-		);
+		await onSendMessage(messageToSend, filesToSend);
 	}, [
 		inputValue,
-		attachedImages,
+		attachedFiles,
 		onSendMessage,
 		onInputChange,
-		onAttachedImagesChange,
+		onAttachedFilesChange,
 		resetHistory,
 	]);
 
@@ -635,8 +740,15 @@ export function ChatInput({
 		[slashCommands, mentions, handleSelectSlashCommand, selectMention],
 	);
 
+<<<<<<< HEAD
 	const isButtonDisabled =
 		((inputValue.trim() === "" && attachedImages.length === 0) ||
+=======
+	// Button disabled state - also allow sending if files are attached
+	const isButtonDisabled =
+		!isSending &&
+		((inputValue.trim() === "" && attachedFiles.length === 0) ||
+>>>>>>> aeab217 (feat: support non-image file attachments in chat input)
 			!isSessionReady ||
 			isRestoringSession) &&
 		!isSending;
@@ -737,7 +849,7 @@ export function ChatInput({
 		}
 	}, [isSending, updateIconColor]);
 
-	// Update icon color when input or attached images change
+	// Update icon color when input or attached files change
 	useEffect(() => {
 		if (sendButtonRef.current) {
 			const svg = sendButtonRef.current.querySelector("svg");
@@ -745,7 +857,7 @@ export function ChatInput({
 				updateIconColor(svg);
 			}
 		}
-	}, [inputValue, attachedImages.length, updateIconColor]);
+	}, [inputValue, attachedFiles.length, updateIconColor]);
 
 	// Auto-focus textarea on mount
 	useEffect(() => {
@@ -1011,10 +1123,18 @@ export function ChatInput({
 					)}
 				</div>
 
+<<<<<<< HEAD
 				{/* Image Preview Strip (only shown when agent supports images) */}
 				{supportsImages && (
 					<ImagePreviewStrip images={attachedImages} onRemove={removeImage} />
 				)}
+=======
+				{/* Attachment Preview Strip (images + file references) */}
+				<AttachmentPreviewStrip
+					files={attachedFiles}
+					onRemove={removeFile}
+				/>
+>>>>>>> aeab217 (feat: support non-image file attachments in chat input)
 
 				{/* Input Actions (Mode Selector + Model Selector + Send Button) */}
 				<div className="agent-client-chat-input-actions">

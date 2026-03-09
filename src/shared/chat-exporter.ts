@@ -310,6 +310,9 @@ session_id: ${sessionId}${tagsLine}
 			case "permission_request":
 				return this.convertPermissionRequestToMarkdown(content);
 
+			case "resource_link":
+				return `[${content.name}](${content.uri})\n\n`;
+
 			case "image":
 				// Skip if images are not included
 				if (!context.includeImages) {

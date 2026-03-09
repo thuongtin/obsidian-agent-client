@@ -18,6 +18,7 @@ import type {
 	ImagePromptContent,
 	PromptContent,
 	ResourcePromptContent,
+	ResourceLinkPromptContent,
 } from "../domain/models/prompt-content";
 import type { IAgentClient } from "../domain/ports/agent-client.port";
 import type {
@@ -47,6 +48,9 @@ export interface PreparePromptInput {
 
 	/** Attached images */
 	images?: ImagePromptContent[];
+
+	/** Attached file references (resource links) */
+	resourceLinks?: ResourceLinkPromptContent[];
 
 	/** Currently active note (for auto-mention feature) */
 	activeNote?: NoteMetadata | null;
@@ -148,7 +152,7 @@ const DEFAULT_MAX_SELECTION_LENGTH = 10000; // Default maximum characters for se
  * Processes the message by:
  * - Building context blocks for mentioned notes
  * - Adding auto-mention context for active note
- * - Creating agent content with context + user message + images
+ * - Creating agent content with context + user message + images + resource links
  *
  * When agent supports embeddedContext capability, mentioned notes are sent
  * as Resource content blocks. Otherwise, they are embedded as XML text.
@@ -242,6 +246,7 @@ async function preparePromptWithEmbeddedContext(
 	const displayContent: PromptContent[] = [
 		...(input.message ? [{ type: "text" as const, text: input.message }] : []),
 		...(input.images || []),
+		...(input.resourceLinks || []),
 	];
 
 	// Build auto-mention prefix for session/load recovery
@@ -265,6 +270,7 @@ async function preparePromptWithEmbeddedContext(
 				]
 			: []),
 		...(input.images || []),
+		...(input.resourceLinks || []),
 	];
 
 	// Build auto-mention context metadata for UI
@@ -367,6 +373,7 @@ async function preparePromptWithTextContext(
 	const displayContent: PromptContent[] = [
 		...(input.message ? [{ type: "text" as const, text: input.message }] : []),
 		...(input.images || []),
+		...(input.resourceLinks || []),
 	];
 
 	const agentContent: PromptContent[] = [
@@ -374,6 +381,7 @@ async function preparePromptWithTextContext(
 			? [{ type: "text" as const, text: agentMessageText }]
 			: []),
 		...(input.images || []),
+		...(input.resourceLinks || []),
 	];
 
 	// Build auto-mention context metadata for UI

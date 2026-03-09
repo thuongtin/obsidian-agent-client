@@ -97,7 +97,7 @@ export interface UseChatControllerReturn {
 	// Core callbacks
 	handleSendMessage: (
 		content: string,
-		images?: ImagePromptContent[],
+		attachments?: AttachedFile[],
 	) => Promise<void>;
 	handleStopGeneration: () => Promise<void>;
 	handleNewChat: (requestedAgentId?: string) => Promise<void>;
@@ -116,8 +116,8 @@ export interface UseChatControllerReturn {
 	// Input state (for broadcast commands - sidebar only)
 	inputValue: string;
 	setInputValue: (value: string) => void;
-	attachedImages: AttachedImage[];
-	setAttachedImages: (images: AttachedImage[]) => void;
+	attachedFiles: AttachedFile[];
+	setAttachedFiles: (files: AttachedFile[]) => void;
 	restoredMessage: string | null;
 	handleRestoredMessageConsumed: () => void;
 
@@ -282,7 +282,7 @@ export function useChatController(
 
 	// Input state (for broadcast commands - sidebar only)
 	const [inputValue, setInputValue] = useState("");
-	const [attachedImages, setAttachedImages] = useState<AttachedImage[]>([]);
+	const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
 
 	// ============================================================
 	// Refs
@@ -322,9 +322,42 @@ export function useChatController(
 	// ============================================================
 	// Callbacks
 	// ============================================================
+	const shouldConvertToWsl = Platform.isWin && settings.windowsWslMode;
+
 	const handleSendMessage = useCallback(
-		async (content: string, images?: ImagePromptContent[]) => {
+		async (content: string, attachments?: AttachedFile[]) => {
 			const isFirstMessage = messages.length === 0;
+
+			// Split attachments by kind
+			const images: ImagePromptContent[] = [];
+			const resourceLinks: ResourceLinkPromptContent[] = [];
+
+			if (attachments) {
+				for (const file of attachments) {
+					if (file.kind === "image" && file.data) {
+						images.push({
+							type: "image",
+							data: file.data,
+							mimeType: file.mimeType,
+						});
+					} else if (file.kind === "file" && file.path) {
+						let filePath = file.path;
+						if (shouldConvertToWsl) {
+							filePath = convertWindowsPathToWsl(filePath);
+						}
+						resourceLinks.push({
+							type: "resource_link",
+							uri: buildFileUri(filePath),
+							name:
+								file.name ??
+								file.path.split("/").pop() ??
+								"file",
+							mimeType: file.mimeType || undefined,
+							size: file.size,
+						});
+					}
+				}
+			}
 
 			await chat.sendMessage(content, {
 				activeNote: settings.autoMentionActiveNote
@@ -332,7 +365,9 @@ export function useChatController(
 					: null,
 				vaultBasePath: vaultPath,
 				isAutoMentionDisabled: autoMention.isDisabled,
-				images,
+				images: images.length > 0 ? images : undefined,
+				resourceLinks:
+					resourceLinks.length > 0 ? resourceLinks : undefined,
 			});
 
 			// Save session metadata locally on first message
@@ -907,8 +942,8 @@ export function useChatController(
 		// Input state
 		inputValue,
 		setInputValue,
-		attachedImages,
-		setAttachedImages,
+		attachedFiles,
+		setAttachedFiles,
 		restoredMessage,
 		handleRestoredMessageConsumed,
 
