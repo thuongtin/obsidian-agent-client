@@ -9,21 +9,10 @@ import type { AuthenticationMethod } from "../domain/models/chat-session";
 import type { ImagePromptContent } from "../domain/models/prompt-content";
 import type { SessionUpdate } from "../domain/models/session-update";
 import type { IAgentClient } from "../domain/ports/agent-client.port";
-<<<<<<< HEAD
 import type {
 	IVaultAccess,
 	NoteMetadata,
 } from "../domain/ports/vault-access.port";
-=======
-import type { IVaultAccess } from "../domain/ports/vault-access.port";
-import type { NoteMetadata } from "../domain/ports/vault-access.port";
-import type { AuthenticationMethod } from "../domain/models/chat-session";
-import type { ErrorInfo } from "../domain/models/agent-error";
-import type {
-	ImagePromptContent,
-	ResourceLinkPromptContent,
-} from "../domain/models/prompt-content";
->>>>>>> aeab217 (feat: support non-image file attachments in chat input)
 import type { IMentionService } from "../shared/mention-utils";
 import {
 	type PreparePromptResult,

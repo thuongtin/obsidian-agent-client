@@ -11,13 +11,6 @@ import type {
 	MessageContent,
 	PermissionOption,
 } from "../../domain/models/chat-message";
-<<<<<<< HEAD
-=======
-import type {
-	SessionConfigOption,
-	SessionUpdate,
-} from "../../domain/models/session-update";
->>>>>>> 3bdac43 (feat: implement configOptions in ACP adapter and hooks)
 import type { PromptContent } from "../../domain/models/prompt-content";
 import type {
 	ForkSessionResult,
@@ -92,7 +85,10 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 	private disconnectCallback: (() => void) | null = null;
 
 	// Message update callback for permission UI updates
-	private updateMessage: (toolCallId: string, content: MessageContent) => void;
+	private updateMessage: (
+		toolCallId: string,
+		content: MessageContent,
+	) => void;
 
 	// Configuration state
 	private currentConfig: AgentConfig | null = null;
@@ -250,8 +246,9 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 		if (Platform.isWin && this.plugin.settings.windowsWslMode) {
 			// Extract node directory from settings for PATH
 			const nodeDir = this.plugin.settings.nodePath
-				? resolveCommandDirectory(this.plugin.settings.nodePath.trim()) ||
-					undefined
+				? resolveCommandDirectory(
+						this.plugin.settings.nodePath.trim(),
+					) || undefined
 				: undefined;
 
 			const wslWrapped = wrapCommandForWsl(
@@ -294,7 +291,8 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 
 		// Use shell on Windows for proper argument handling, but NOT in WSL mode
 		// When using WSL, wsl.exe is the command and doesn't need shell wrapper
-		const needsShell = Platform.isWin && !this.plugin.settings.windowsWslMode;
+		const needsShell =
+			Platform.isWin && !this.plugin.settings.windowsWslMode;
 
 		// Spawn the agent process
 		const agentProcess = spawn(spawnCommand, spawnArgs, {
@@ -316,7 +314,10 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 		});
 
 		agentProcess.on("error", (error) => {
-			this.logger.error(`[AcpAdapter] ${agentLabel} process error:`, error);
+			this.logger.error(
+				`[AcpAdapter] ${agentLabel} process error:`,
+				error,
+			);
 
 			const processError: ProcessError = {
 				type: "spawn_failed",
@@ -412,12 +413,56 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 				stdin.end();
 			},
 		});
+		// Buffer for accumulating incomplete lines across chunk boundaries
+		let buffer = "";
+
 		const output = new ReadableStream<Uint8Array>({
-			start(controller) {
+			start: (controller) => {
 				stdout.on("data", (chunk: Uint8Array) => {
-					controller.enqueue(chunk);
+					const text = new TextDecoder().decode(chunk, {
+						stream: true,
+					});
+					buffer += text;
+
+					// Process complete lines
+					let newlineIndex: number;
+					while ((newlineIndex = buffer.indexOf("\n")) >= 0) {
+						const line = buffer.slice(0, newlineIndex).trim();
+						buffer = buffer.slice(newlineIndex + 1);
+
+						if (line.length > 0) {
+							// Check if it looks like a JSON-RPC message
+							if (line.startsWith("{") && line.endsWith("}")) {
+								// Re-encode and enqueue the valid JSON line (with newline)
+								const validChunk = new TextEncoder().encode(
+									line + "\n",
+								);
+								controller.enqueue(validChunk);
+							} else {
+								// Log non-JSON output from stdout as debug info
+								this.logger.log(
+									`[AcpAdapter] ${agentLabel} stdout (non-JSON):`,
+									line,
+								);
+							}
+						}
+					}
 				});
 				stdout.on("end", () => {
+					// Handle any remaining text in the buffer
+					if (buffer.trim().length > 0) {
+						const line = buffer.trim();
+						if (line.startsWith("{") && line.endsWith("}")) {
+							controller.enqueue(
+								new TextEncoder().encode(line + "\n"),
+							);
+						} else {
+							this.logger.log(
+								`[AcpAdapter] ${agentLabel} stdout (non-JSON):`,
+								line,
+							);
+						}
+					}
 					controller.close();
 				});
 			},
@@ -453,7 +498,10 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 			this.logger.log(
 				`[AcpAdapter] ✅ Connected to agent (protocol v${initResult.protocolVersion})`,
 			);
-			this.logger.log("[AcpAdapter] Auth methods:", initResult.authMethods);
+			this.logger.log(
+				"[AcpAdapter] Auth methods:",
+				initResult.authMethods,
+			);
 			this.logger.log(
 				"[AcpAdapter] Agent capabilities:",
 				initResult.agentCapabilities,
@@ -466,7 +514,8 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 			// Extract capabilities from agent capabilities
 			const promptCaps = initResult.agentCapabilities?.promptCapabilities;
 			const mcpCaps = initResult.agentCapabilities?.mcpCapabilities;
-			const sessionCaps = initResult.agentCapabilities?.sessionCapabilities;
+			const sessionCaps =
+				initResult.agentCapabilities?.sessionCapabilities;
 
 			return {
 				protocolVersion: initResult.protocolVersion,
@@ -479,7 +528,8 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 				},
 				// Full agent capabilities
 				agentCapabilities: {
-					loadSession: initResult.agentCapabilities?.loadSession ?? false,
+					loadSession:
+						initResult.agentCapabilities?.loadSession ?? false,
 					// Session capabilities (unstable features)
 					sessionCapabilities: sessionCaps
 						? {
@@ -525,7 +575,9 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 	 */
 	async newSession(workingDirectory: string): Promise<NewSessionResult> {
 		if (!this.connection) {
-			throw new Error("Connection not initialized. Call initialize() first.");
+			throw new Error(
+				"Connection not initialized. Call initialize() first.",
+			);
 		}
 
 		try {
@@ -537,7 +589,10 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 				sessionCwd = convertWindowsPathToWsl(workingDirectory);
 			}
 
-			this.logger.log("[AcpAdapter] Using working directory:", sessionCwd);
+			this.logger.log(
+				"[AcpAdapter] Using working directory:",
+				sessionCwd,
+			);
 
 			const sessionResult = await this.connection.newSession({
 				cwd: sessionCwd,
@@ -556,12 +611,14 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 			let modes: SessionModeState | undefined;
 			if (sessionResult.modes) {
 				modes = {
-					availableModes: sessionResult.modes.availableModes.map((m) => ({
-						id: m.id,
-						name: m.name,
-						// Convert null to undefined for type compatibility
-						description: m.description ?? undefined,
-					})),
+					availableModes: sessionResult.modes.availableModes.map(
+						(m) => ({
+							id: m.id,
+							name: m.name,
+							// Convert null to undefined for type compatibility
+							description: m.description ?? undefined,
+						}),
+					),
 					currentModeId: sessionResult.modes.currentModeId,
 				};
 				this.logger.log(
@@ -573,12 +630,14 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 			let models: SessionModelState | undefined;
 			if (sessionResult.models) {
 				models = {
-					availableModels: sessionResult.models.availableModels.map((m) => ({
-						modelId: m.modelId,
-						name: m.name,
-						// Convert null to undefined for type compatibility
-						description: m.description ?? undefined,
-					})),
+					availableModels: sessionResult.models.availableModels.map(
+						(m) => ({
+							modelId: m.modelId,
+							name: m.name,
+							// Convert null to undefined for type compatibility
+							description: m.description ?? undefined,
+						}),
+					),
 					currentModelId: sessionResult.models.currentModelId,
 				};
 				this.logger.log(
@@ -615,7 +674,9 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 	 */
 	async authenticate(methodId: string): Promise<boolean> {
 		if (!this.connection) {
-			throw new Error("Connection not initialized. Call initialize() first.");
+			throw new Error(
+				"Connection not initialized. Call initialize() first.",
+			);
 		}
 
 		try {
@@ -631,9 +692,14 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 	/**
 	 * Send a message to the agent in a specific session.
 	 */
-	async sendPrompt(sessionId: string, content: PromptContent[]): Promise<void> {
+	async sendPrompt(
+		sessionId: string,
+		content: PromptContent[],
+	): Promise<void> {
 		if (!this.connection) {
-			throw new Error("Connection not initialized. Call initialize() first.");
+			throw new Error(
+				"Connection not initialized. Call initialize() first.",
+			);
 		}
 
 		// Reset current message for new assistant response
@@ -697,7 +763,10 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 				errorObj.code === -32603 &&
 				"data" in errorObj
 			) {
-				const errorData = errorObj.data as Record<string, unknown> | null;
+				const errorData = errorObj.data as Record<
+					string,
+					unknown
+				> | null;
 				if (
 					errorData &&
 					typeof errorData === "object" &&
@@ -713,7 +782,9 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 					}
 					// Ignore "user aborted" errors (from cancel operation)
 					if (errorData.details.includes("user aborted")) {
-						this.logger.log("[AcpAdapter] User aborted request - ignoring");
+						this.logger.log(
+							"[AcpAdapter] User aborted request - ignoring",
+						);
 						return;
 					}
 				}
@@ -733,18 +804,25 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 		}
 
 		try {
-			this.logger.log("[AcpAdapter] Sending session/cancel notification...");
+			this.logger.log(
+				"[AcpAdapter] Sending session/cancel notification...",
+			);
 
 			await this.connection.cancel({
 				sessionId: sessionId,
 			});
 
-			this.logger.log("[AcpAdapter] Cancellation request sent successfully");
+			this.logger.log(
+				"[AcpAdapter] Cancellation request sent successfully",
+			);
 
 			// Cancel all running operations (permission requests + terminals)
 			this.cancelAllOperations();
 		} catch (error) {
-			this.logger.error("[AcpAdapter] Failed to send cancellation:", error);
+			this.logger.error(
+				"[AcpAdapter] Failed to send cancellation:",
+				error,
+			);
 
 			// Still cancel all operations even if network cancellation failed
 			this.cancelAllOperations();
@@ -815,7 +893,9 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 	 */
 	async setSessionMode(sessionId: string, modeId: string): Promise<void> {
 		if (!this.connection) {
-			throw new Error("Connection not initialized. Call initialize() first.");
+			throw new Error(
+				"Connection not initialized. Call initialize() first.",
+			);
 		}
 
 		this.logger.log(
@@ -829,7 +909,10 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 			});
 			this.logger.log(`[AcpAdapter] Session mode set to: ${modeId}`);
 		} catch (error) {
-			this.logger.error("[AcpAdapter] Failed to set session mode:", error);
+			this.logger.error(
+				"[AcpAdapter] Failed to set session mode:",
+				error,
+			);
 			throw error;
 		}
 	}
@@ -841,7 +924,9 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 	 */
 	async setSessionModel(sessionId: string, modelId: string): Promise<void> {
 		if (!this.connection) {
-			throw new Error("Connection not initialized. Call initialize() first.");
+			throw new Error(
+				"Connection not initialized. Call initialize() first.",
+			);
 		}
 
 		this.logger.log(
@@ -855,7 +940,10 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 			});
 			this.logger.log(`[AcpAdapter] Session model set to: ${modelId}`);
 		} catch (error) {
-			this.logger.error("[AcpAdapter] Failed to set session model:", error);
+			this.logger.error(
+				"[AcpAdapter] Failed to set session model:",
+				error,
+			);
 			throw error;
 		}
 	}
@@ -1084,7 +1172,9 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 					kind: update.kind ?? undefined,
 					content: AcpTypeConverter.toToolCallContent(update.content),
 					locations: update.locations ?? undefined,
-					rawInput: update.rawInput as { [k: string]: unknown } | undefined,
+					rawInput: update.rawInput as
+						| { [k: string]: unknown }
+						| undefined,
 				});
 				break;
 			}
@@ -1103,13 +1193,13 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 					update.availableCommands,
 				);
 
-				const commands: SlashCommand[] = (update.availableCommands || []).map(
-					(cmd) => ({
-						name: cmd.name,
-						description: cmd.description,
-						hint: cmd.input?.hint ?? null,
-					}),
-				);
+				const commands: SlashCommand[] = (
+					update.availableCommands || []
+				).map((cmd) => ({
+					name: cmd.name,
+					description: cmd.description,
+					hint: cmd.input?.hint ?? null,
+				}));
 
 				this.sessionUpdateCallback?.({
 					type: "available_commands_update",
@@ -1274,7 +1364,8 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 					(option) =>
 						option.kind === "allow_once" ||
 						option.kind === "allow_always" ||
-						(!option.kind && option.name.toLowerCase().includes("allow")),
+						(!option.kind &&
+							option.name.toLowerCase().includes("allow")),
 				) || params.options[0]; // fallback to first option
 
 			this.logger.log(
@@ -1298,7 +1389,9 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 		const normalizedOptions: PermissionOption[] = params.options.map(
 			(option) => {
 				const normalizedKind =
-					option.kind === "reject_always" ? "reject_once" : option.kind;
+					option.kind === "reject_always"
+						? "reject_once"
+						: option.kind;
 				const kind: PermissionOption["kind"] = normalizedKind
 					? normalizedKind
 					: option.name.toLowerCase().includes("allow")
@@ -1341,7 +1434,9 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 			content: AcpTypeConverter.toToolCallContent(
 				toolCallInfo?.content as acp.ToolCallContent[] | undefined,
 			),
-			rawInput: toolCallInfo?.rawInput as { [k: string]: unknown } | undefined,
+			rawInput: toolCallInfo?.rawInput as
+				| { [k: string]: unknown }
+				| undefined,
 			permissionRequest: permissionRequestData,
 		});
 
@@ -1404,7 +1499,10 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 	createTerminal(
 		params: acp.CreateTerminalRequest,
 	): Promise<acp.CreateTerminalResponse> {
-		this.logger.log("[AcpAdapter] createTerminal called with params:", params);
+		this.logger.log(
+			"[AcpAdapter] createTerminal called with params:",
+			params,
+		);
 
 		// Use current config's working directory if cwd is not provided
 		const modifiedParams = {
@@ -1571,11 +1669,13 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 			let models: SessionModelState | undefined;
 			if (response.models) {
 				models = {
-					availableModels: response.models.availableModels.map((m) => ({
-						modelId: m.modelId,
-						name: m.name,
-						description: m.description ?? undefined,
-					})),
+					availableModels: response.models.availableModels.map(
+						(m) => ({
+							modelId: m.modelId,
+							name: m.name,
+							description: m.description ?? undefined,
+						}),
+					),
 					currentModelId: response.models.currentModelId,
 				};
 			}
@@ -1652,11 +1752,13 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 			let models: SessionModelState | undefined;
 			if (response.models) {
 				models = {
-					availableModels: response.models.availableModels.map((m) => ({
-						modelId: m.modelId,
-						name: m.name,
-						description: m.description ?? undefined,
-					})),
+					availableModels: response.models.availableModels.map(
+						(m) => ({
+							modelId: m.modelId,
+							name: m.name,
+							description: m.description ?? undefined,
+						}),
+					),
 					currentModelId: response.models.currentModelId,
 				};
 			}
@@ -1736,11 +1838,13 @@ export class AcpAdapter implements IAgentClient, IAcpClient {
 			let models: SessionModelState | undefined;
 			if (response.models) {
 				models = {
-					availableModels: response.models.availableModels.map((m) => ({
-						modelId: m.modelId,
-						name: m.name,
-						description: m.description ?? undefined,
-					})),
+					availableModels: response.models.availableModels.map(
+						(m) => ({
+							modelId: m.modelId,
+							name: m.name,
+							description: m.description ?? undefined,
+						}),
+					),
 					currentModelId: response.models.currentModelId,
 				};
 			}

@@ -1,10 +1,7 @@
 import * as React from "react";
-
-<<<<<<< HEAD
 const { useRef, useState, useEffect, useCallback } = React;
+import { setIcon, DropdownComponent, Notice } from "obsidian";
 
-import { DropdownComponent, Notice, setIcon } from "obsidian";
-=======
 import type AgentClientPlugin from "../../plugin";
 import type { IChatViewHost } from "./types";
 import type { NoteMetadata } from "../../domain/ports/vault-access.port";
@@ -29,27 +26,9 @@ import { ErrorOverlay } from "./ErrorOverlay";
 import { AttachmentPreviewStrip } from "./AttachmentPreviewStrip";
 import { useInputHistory } from "../../hooks/useInputHistory";
 import { getLogger } from "../../shared/logger";
->>>>>>> aeab217 (feat: support non-image file attachments in chat input)
 import type { ErrorInfo } from "../../domain/models/agent-error";
-import type { ChatMessage } from "../../domain/models/chat-message";
-import type {
-	SessionModelState,
-	SessionModeState,
-	SlashCommand,
-} from "../../domain/models/chat-session";
-import type { ImagePromptContent } from "../../domain/models/prompt-content";
-import type { NoteMetadata } from "../../domain/ports/vault-access.port";
-import type { UseAutoMentionReturn } from "../../hooks/useAutoMention";
-import { useInputHistory } from "../../hooks/useInputHistory";
-import type { UseMentionsReturn } from "../../hooks/useMentions";
+import type { AgentUpdateNotification } from "../../shared/agent-update-checker";
 import { useSettings } from "../../hooks/useSettings";
-import type { UseSlashCommandsReturn } from "../../hooks/useSlashCommands";
-import type AgentClientPlugin from "../../plugin";
-import { getLogger } from "../../shared/logger";
-import { ErrorOverlay } from "./ErrorOverlay";
-import { type AttachedImage, ImagePreviewStrip } from "./ImagePreviewStrip";
-import { SuggestionDropdown } from "./SuggestionDropdown";
-import type { IChatViewHost } from "./types";
 
 // ============================================================================
 // Image Constants
@@ -74,6 +53,25 @@ const SUPPORTED_IMAGE_TYPES = [
 
 type SupportedImageType = (typeof SUPPORTED_IMAGE_TYPES)[number];
 
+// ============================================================================
+// Usage Indicator Helpers
+// ============================================================================
+
+/** Format token count for display (e.g., 21367 → "21.4K", 200000 → "200K") */
+function formatTokenCount(tokens: number): string {
+	if (tokens < 1000) return String(tokens);
+	const k = tokens / 1000;
+	return k >= 100 ? `${Math.round(k)}K` : `${k.toFixed(1)}K`;
+}
+
+/** Get CSS class for usage percentage color thresholds */
+function getUsageColorClass(percentage: number): string {
+	if (percentage >= 90) return "agent-client-usage-danger";
+	if (percentage >= 80) return "agent-client-usage-warning";
+	if (percentage >= 70) return "agent-client-usage-caution";
+	return "agent-client-usage-normal";
+}
+
 /**
  * Props for ChatInput component
  */
@@ -84,8 +82,6 @@ export interface ChatInputProps {
 	isSessionReady: boolean;
 	/** Whether a session is being restored (load/resume/fork) */
 	isRestoringSession: boolean;
-	/** Whether the session is currently reconnecting */
-	isReconnecting?: boolean;
 	/** Display name of the active agent */
 	agentLabel: string;
 	/** Available slash commands */
@@ -121,6 +117,12 @@ export interface ChatInputProps {
 	models?: SessionModelState;
 	/** Callback when model is changed */
 	onModelChange?: (modelId: string) => void;
+	/** Session config options (supersedes modes/models when present) */
+	configOptions?: SessionConfigOption[];
+	/** Callback when a config option is changed */
+	onConfigOptionChange?: (configId: string, value: string) => void;
+	/** Context window usage (shown as percentage indicator) */
+	usage?: SessionUsage;
 	/** Whether the agent supports image attachments */
 	supportsImages?: boolean;
 	/** Current agent ID (used to clear images on agent switch) */
@@ -138,6 +140,10 @@ export interface ChatInputProps {
 	errorInfo: ErrorInfo | null;
 	/** Callback to clear the error */
 	onClearError: () => void;
+	/** Agent update notification (version update or migration) */
+	agentUpdateNotification: AgentUpdateNotification | null;
+	/** Callback to dismiss the agent update notification */
+	onClearAgentUpdate: () => void;
 	/** Messages array for input history navigation */
 	messages: ChatMessage[];
 }
@@ -158,7 +164,6 @@ export function ChatInput({
 	isSending,
 	isSessionReady,
 	isRestoringSession,
-	isReconnecting,
 	agentLabel,
 	availableCommands,
 	autoMentionEnabled,
@@ -175,6 +180,9 @@ export function ChatInput({
 	onModeChange,
 	models,
 	onModelChange,
+	configOptions,
+	onConfigOptionChange,
+	usage,
 	supportsImages = false,
 	agentId,
 	// Controlled component props
@@ -185,6 +193,9 @@ export function ChatInput({
 	// Error overlay props
 	errorInfo,
 	onClearError,
+	// Agent update notification props
+	agentUpdateNotification,
+	onClearAgentUpdate,
 	// Input history
 	messages,
 }: ChatInputProps) {
@@ -218,6 +229,10 @@ export function ChatInput({
 	const modeDropdownInstance = useRef<DropdownComponent | null>(null);
 	const modelDropdownRef = useRef<HTMLDivElement>(null);
 	const modelDropdownInstance = useRef<DropdownComponent | null>(null);
+	const configOptionsRef = useRef<HTMLDivElement>(null);
+	const configDropdownInstances = useRef<Map<string, DropdownComponent>>(
+		new Map(),
+	);
 
 	// Clear attached files when agent changes
 	useEffect(() => {
@@ -225,16 +240,26 @@ export function ChatInput({
 	}, [agentId, onAttachedFilesChange]);
 
 	/**
-	 * Add a file to the attached files list.
-	 * Simple addition - validation is done in caller.
+	 * Add multiple attachments at once with limit enforcement.
+	 * Single state update avoids stale closure issues.
 	 */
-	const addFile = useCallback(
-		(file: AttachedFile) => {
-			// Safety check for max count
-			if (attachedFiles.length >= MAX_ATTACHMENT_COUNT) {
+	const addAttachments = useCallback(
+		(newFiles: AttachedFile[]) => {
+			if (newFiles.length === 0) return;
+			const remaining = MAX_ATTACHMENT_COUNT - attachedFiles.length;
+			if (remaining <= 0) {
+				new Notice(
+					`[Agent Client] Maximum ${MAX_ATTACHMENT_COUNT} attachments allowed`,
+				);
 				return;
 			}
-			onAttachedFilesChange([...attachedFiles, file]);
+			const toAdd = newFiles.slice(0, remaining);
+			if (toAdd.length < newFiles.length) {
+				new Notice(
+					`[Agent Client] Maximum ${MAX_ATTACHMENT_COUNT} attachments allowed`,
+				);
+			}
+			onAttachedFilesChange([...attachedFiles, ...toAdd]);
 		},
 		[attachedFiles, onAttachedFilesChange],
 	);
@@ -244,11 +269,7 @@ export function ChatInput({
 	 */
 	const removeFile = useCallback(
 		(id: string) => {
-<<<<<<< HEAD
-			onAttachedImagesChange(attachedImages.filter((img) => img.id !== id));
-=======
 			onAttachedFilesChange(attachedFiles.filter((f) => f.id !== id));
->>>>>>> aeab217 (feat: support non-image file attachments in chat input)
 		},
 		[attachedFiles, onAttachedFilesChange],
 	);
@@ -271,78 +292,56 @@ export function ChatInput({
 	}, []);
 
 	/**
-	 * Process and attach image files as Base64.
-	 * Common logic for paste and drop handlers.
+	 * Convert image files to Base64 AttachedFile objects.
+	 * Returns the converted attachments without updating state.
 	 */
-	const processImageFiles = useCallback(
-		async (files: File[]) => {
-			let addedCount = 0;
-
+	const convertImagesToAttachments = useCallback(
+		async (files: File[]): Promise<AttachedFile[]> => {
+			const result: AttachedFile[] = [];
 			for (const file of files) {
-				// Check attachment count
-				if (attachedFiles.length + addedCount >= MAX_ATTACHMENT_COUNT) {
-					new Notice(
-						`[Agent Client] Maximum ${MAX_ATTACHMENT_COUNT} attachments allowed`,
-					);
-					break;
-				}
-
-				// Check file size (before conversion - memory efficiency)
 				if (file.size > MAX_IMAGE_SIZE_BYTES) {
 					new Notice(
 						`[Agent Client] Image too large (max ${MAX_IMAGE_SIZE_MB}MB)`,
 					);
 					continue;
 				}
-
-				// Convert to Base64 and add
 				try {
 					const base64 = await fileToBase64(file);
-					addFile({
+					result.push({
 						id: crypto.randomUUID(),
 						kind: "image",
 						data: base64,
 						mimeType: file.type,
 					});
-					addedCount++;
 				} catch (error) {
 					console.error("Failed to convert image:", error);
 					new Notice("[Agent Client] Failed to attach image");
 				}
 			}
+			return result;
 		},
-		[attachedFiles.length, addFile, fileToBase64],
+		[fileToBase64],
 	);
 
 	/**
-	 * Process files as resource_link references (no Base64 conversion).
-	 * Used for non-image files and for image files when agent lacks image capability.
+	 * Convert files to resource_link AttachedFile objects.
+	 * Returns the converted attachments without updating state.
 	 */
-	const processFileReferences = useCallback(
-		(files: File[]) => {
+	const convertFilesToAttachments = useCallback(
+		(files: File[]): AttachedFile[] => {
 			// Get file path via Electron's webUtils API (File.path was removed in Electron 32)
 			// eslint-disable-next-line @typescript-eslint/no-require-imports
-			const { webUtils } = require("electron") as {
+			const { webUtils } = eval("require")("electron") as {
 				webUtils: { getPathForFile: (file: File) => string };
 			};
-
-			let addedCount = 0;
-
+			const result: AttachedFile[] = [];
 			for (const file of files) {
-				if (attachedFiles.length + addedCount >= MAX_ATTACHMENT_COUNT) {
-					new Notice(
-						`[Agent Client] Maximum ${MAX_ATTACHMENT_COUNT} attachments allowed`,
-					);
-					break;
-				}
-
 				const filePath = webUtils.getPathForFile(file);
 				if (!filePath) {
 					new Notice("[Agent Client] Could not determine file path");
 					continue;
 				}
-
-				addFile({
+				result.push({
 					id: crypto.randomUUID(),
 					kind: "file",
 					mimeType: file.type || "application/octet-stream",
@@ -350,43 +349,80 @@ export function ChatInput({
 					path: filePath,
 					size: file.size,
 				});
-				addedCount++;
 			}
+			return result;
 		},
-		[attachedFiles.length, addFile],
+		[],
 	);
 
 	/**
-	 * Handle paste event for image attachment.
+	 * Handle paste event for file attachment.
+	 * Images are embedded as Base64 if agent supports it, otherwise sent as resource_link.
+	 * Non-image files are sent as resource_link.
 	 */
 	const handlePaste = useCallback(
 		async (e: React.ClipboardEvent) => {
 			const items = e.clipboardData?.items;
 			if (!items) return;
 
-			// Extract image files from clipboard
+			// Extract files from clipboard, split by type
 			const imageFiles: File[] = [];
+			const nonImageFiles: File[] = [];
+
 			for (const item of Array.from(items)) {
-				if (SUPPORTED_IMAGE_TYPES.includes(item.type as SupportedImageType)) {
-					const file = item.getAsFile();
-					if (file) imageFiles.push(file);
+				if (item.kind !== "file") continue;
+				const file = item.getAsFile();
+				if (!file) continue;
+
+				if (
+					SUPPORTED_IMAGE_TYPES.includes(
+						item.type as SupportedImageType,
+					)
+				) {
+					imageFiles.push(file);
+				} else {
+					nonImageFiles.push(file);
 				}
 			}
 
-			if (imageFiles.length === 0) return;
+			if (imageFiles.length === 0 && nonImageFiles.length === 0) return;
 
 			e.preventDefault();
 
-			if (!supportsImages) {
-				new Notice(
-					"[Agent Client] This agent does not support image paste. Try drag & drop instead.",
-				);
-				return;
+			const newAttachments: AttachedFile[] = [];
+
+			if (imageFiles.length > 0) {
+				if (supportsImages) {
+					newAttachments.push(
+						...(await convertImagesToAttachments(imageFiles)),
+					);
+				} else {
+					// Try resource_link fallback (works for files copied from Finder, not for screenshots)
+					const converted = convertFilesToAttachments(imageFiles);
+					if (converted.length > 0) {
+						newAttachments.push(...converted);
+					} else {
+						new Notice(
+							"[Agent Client] This agent does not support image paste. Try drag & drop instead.",
+						);
+					}
+				}
 			}
 
-			await processImageFiles(imageFiles);
+			if (nonImageFiles.length > 0) {
+				newAttachments.push(
+					...convertFilesToAttachments(nonImageFiles),
+				);
+			}
+
+			addAttachments(newAttachments);
 		},
-		[supportsImages, processImageFiles],
+		[
+			supportsImages,
+			convertImagesToAttachments,
+			convertFilesToAttachments,
+			addAttachments,
+		],
 	);
 
 	/**
@@ -454,23 +490,35 @@ export function ChatInput({
 				}
 			}
 
-			// Process image files
+			// Convert all files, then update state once
+			const newAttachments: AttachedFile[] = [];
+
 			if (imageFiles.length > 0) {
 				if (supportsImages) {
-					// Agent supports images → embed as Base64
-					await processImageFiles(imageFiles);
+					newAttachments.push(
+						...(await convertImagesToAttachments(imageFiles)),
+					);
 				} else {
-					// Agent doesn't support images → fallback to resource_link
-					processFileReferences(imageFiles);
+					newAttachments.push(
+						...convertFilesToAttachments(imageFiles),
+					);
 				}
 			}
 
-			// Process non-image files as resource_link
 			if (nonImageFiles.length > 0) {
-				processFileReferences(nonImageFiles);
+				newAttachments.push(
+					...convertFilesToAttachments(nonImageFiles),
+				);
 			}
+
+			addAttachments(newAttachments);
 		},
-		[supportsImages, processImageFiles, processFileReferences],
+		[
+			supportsImages,
+			convertImagesToAttachments,
+			convertFilesToAttachments,
+			addAttachments,
+		],
 	);
 
 	/**
@@ -610,13 +658,8 @@ export function ChatInput({
 	);
 
 	/**
-	 * Handle sending the current input as a message.
+	 * Handle sending or stopping based on current state.
 	 */
-<<<<<<< HEAD
-	const handleSend = useCallback(async () => {
-		// Allow sending if there's text OR images
-		if (!inputValue.trim() && attachedImages.length === 0) return;
-=======
 	const handleSendOrStop = useCallback(async () => {
 		if (isSending) {
 			await onStopGeneration();
@@ -625,20 +668,11 @@ export function ChatInput({
 
 		// Allow sending if there's text OR attachments
 		if (!inputValue.trim() && attachedFiles.length === 0) return;
->>>>>>> aeab217 (feat: support non-image file attachments in chat input)
 
 		// Save input value and files before clearing
 		const messageToSend = inputValue.trim();
-<<<<<<< HEAD
-		const imagesToSend: ImagePromptContent[] = attachedImages.map((img) => ({
-			type: "image",
-			data: img.data,
-			mimeType: img.mimeType,
-		}));
-=======
 		const filesToSend =
 			attachedFiles.length > 0 ? [...attachedFiles] : undefined;
->>>>>>> aeab217 (feat: support non-image file attachments in chat input)
 
 		// Clear input, files, and hint state immediately
 		onInputChange("");
@@ -649,24 +683,15 @@ export function ChatInput({
 
 		await onSendMessage(messageToSend, filesToSend);
 	}, [
+		isSending,
 		inputValue,
 		attachedFiles,
 		onSendMessage,
+		onStopGeneration,
 		onInputChange,
 		onAttachedFilesChange,
 		resetHistory,
 	]);
-
-	/**
-	 * Handle the action button click (Send or Stop based on state).
-	 */
-	const handleActionButtonClick = useCallback(async () => {
-		if (isSending) {
-			await onStopGeneration();
-			return;
-		}
-		await handleSend();
-	}, [isSending, onStopGeneration, handleSend]);
 
 	/**
 	 * Handle dropdown keyboard navigation.
@@ -740,18 +765,12 @@ export function ChatInput({
 		[slashCommands, mentions, handleSelectSlashCommand, selectMention],
 	);
 
-<<<<<<< HEAD
-	const isButtonDisabled =
-		((inputValue.trim() === "" && attachedImages.length === 0) ||
-=======
 	// Button disabled state - also allow sending if files are attached
 	const isButtonDisabled =
 		!isSending &&
 		((inputValue.trim() === "" && attachedFiles.length === 0) ||
->>>>>>> aeab217 (feat: support non-image file attachments in chat input)
 			!isSessionReady ||
-			isRestoringSession) &&
-		!isSending;
+			isRestoringSession);
 
 	/**
 	 * Handle keyboard events in the textarea.
@@ -770,7 +789,10 @@ export function ChatInput({
 
 			// Normal input handling - check if should send based on shortcut setting
 			const hasCmdCtrl = e.metaKey || e.ctrlKey;
-			if (e.key === "Enter" && (!e.nativeEvent.isComposing || hasCmdCtrl)) {
+			if (
+				e.key === "Enter" &&
+				(!e.nativeEvent.isComposing || hasCmdCtrl)
+			) {
 				const shouldSend =
 					settings.sendMessageShortcut === "enter"
 						? !e.shiftKey // Enter mode: send unless Shift is pressed
@@ -778,26 +800,19 @@ export function ChatInput({
 
 				if (shouldSend) {
 					e.preventDefault();
-					// Enable keyboard sending even if isSending is true (for queueing)
-					// But protect against empty input / unready session
-					const canSendNow =
-						(inputValue.trim() !== "" || attachedImages.length > 0) &&
-						isSessionReady &&
-						!isRestoringSession;
-					if (canSendNow) {
-						void handleSend();
+					if (!isButtonDisabled && !isSending) {
+						void handleSendOrStop();
 					}
 				}
 				// If not shouldSend, allow default behavior (newline)
 			}
 		},
 		[
+			handleDropdownKeyPress,
 			handleHistoryKeyDown,
-			inputValue,
-			attachedImages.length,
-			isSessionReady,
-			isRestoringSession,
-			handleSend,
+			isSending,
+			isButtonDisabled,
+			handleSendOrStop,
 			settings.sendMessageShortcut,
 		],
 	);
@@ -810,7 +825,12 @@ export function ChatInput({
 			const newValue = e.target.value;
 			const cursorPosition = e.target.selectionStart || 0;
 
-			logger.log("[DEBUG] Input changed:", newValue, "cursor:", cursorPosition);
+			logger.log(
+				"[DEBUG] Input changed:",
+				newValue,
+				"cursor:",
+				cursorPosition,
+			);
 
 			onInputChange(newValue);
 
@@ -878,8 +898,10 @@ export function ChatInput({
 				window.setTimeout(() => {
 					if (textareaRef.current) {
 						textareaRef.current.focus();
-						textareaRef.current.selectionStart = restoredMessage.length;
-						textareaRef.current.selectionEnd = restoredMessage.length;
+						textareaRef.current.selectionStart =
+							restoredMessage.length;
+						textareaRef.current.selectionEnd =
+							restoredMessage.length;
 					}
 				}, 0);
 			}
@@ -1009,14 +1031,84 @@ export function ChatInput({
 		}
 	}, [currentModelId]);
 
+	// Stable reference for configOption callback
+	const onConfigOptionChangeRef = useRef(onConfigOptionChange);
+	onConfigOptionChangeRef.current = onConfigOptionChange;
+
+	// Initialize configOptions dropdowns (dynamic, replaces mode/model when present)
+	useEffect(() => {
+		const containerEl = configOptionsRef.current;
+		if (!containerEl) return;
+
+		// Clean up existing dropdowns
+		containerEl.empty();
+		configDropdownInstances.current.clear();
+
+		if (!configOptions || configOptions.length === 0) return;
+
+		for (const option of configOptions) {
+			// Flatten options (handle both flat and grouped)
+			const flatOptions = flattenConfigSelectOptions(option.options);
+
+			// Only show if there are multiple values
+			if (flatOptions.length <= 1) continue;
+
+			// Create wrapper div with appropriate class based on category
+			const categoryClass = option.category
+				? `agent-client-config-selector-${option.category}`
+				: "agent-client-config-selector";
+			const wrapperEl = containerEl.createDiv({
+				cls: `agent-client-config-selector ${categoryClass}`,
+				attr: { title: option.description ?? option.name },
+			});
+
+			const dropdownContainer = wrapperEl.createDiv();
+			const dropdown = new DropdownComponent(dropdownContainer);
+
+			// Add options (with group prefix for grouped options)
+			if (option.options.length > 0 && "group" in option.options[0]) {
+				for (const group of option.options as SessionConfigSelectGroup[]) {
+					for (const opt of group.options) {
+						dropdown.addOption(
+							opt.value,
+							`${group.name} / ${opt.name}`,
+						);
+					}
+				}
+			} else {
+				for (const opt of flatOptions) {
+					dropdown.addOption(opt.value, opt.name);
+				}
+			}
+
+			// Set current value
+			dropdown.setValue(option.currentValue);
+
+			// Handle change
+			const configId = option.id;
+			dropdown.onChange((value) => {
+				if (onConfigOptionChangeRef.current) {
+					onConfigOptionChangeRef.current(configId, value);
+				}
+			});
+
+			// Add chevron icon
+			const iconEl = wrapperEl.createSpan({
+				cls: "agent-client-config-selector-icon",
+			});
+			setIcon(iconEl, "chevron-down");
+
+			configDropdownInstances.current.set(option.id, dropdown);
+		}
+
+		return () => {
+			containerEl.empty();
+			configDropdownInstances.current.clear();
+		};
+	}, [configOptions]);
+
 	// Placeholder text
-	const placeholder = isRestoringSession
-		? "Restoring session..."
-		: isReconnecting
-			? "Reconnecting to agent..."
-			: !isSessionReady
-				? "Waiting for agent connection..."
-				: `Message ${agentLabel} - @ to mention notes${availableCommands.length > 0 ? ", / for commands" : ""}`;
+	const placeholder = `Message ${agentLabel} - @ to mention notes${availableCommands.length > 0 ? ", / for commands" : ""}`;
 
 	return (
 		<div className="agent-client-chat-input-container">
@@ -1027,6 +1119,17 @@ export function ChatInput({
 					onClose={onClearError}
 					showEmojis={showEmojis}
 					view={view}
+				/>
+			)}
+
+			{/* Agent Update Notification - hidden when error is showing */}
+			{!errorInfo && agentUpdateNotification && (
+				<ErrorOverlay
+					errorInfo={agentUpdateNotification}
+					onClose={onClearAgentUpdate}
+					showEmojis={showEmojis}
+					view={view}
+					variant={agentUpdateNotification.variant}
 				/>
 			)}
 
@@ -1074,17 +1177,23 @@ export function ChatInput({
 							{autoMention.activeNote.selection && (
 								<span className="agent-client-selection-indicator">
 									{":"}
-									{autoMention.activeNote.selection.from.line + 1}-
-									{autoMention.activeNote.selection.to.line + 1}
+									{autoMention.activeNote.selection.from
+										.line + 1}
+									-
+									{autoMention.activeNote.selection.to.line +
+										1}
 								</span>
 							)}
 						</span>
 						<button
 							className="agent-client-auto-mention-toggle-btn"
 							onClick={(e) => {
-								const newDisabledState = !autoMention.isDisabled;
+								const newDisabledState =
+									!autoMention.isDisabled;
 								autoMention.toggle(newDisabledState);
-								const iconName = newDisabledState ? "x" : "plus";
+								const iconName = newDisabledState
+									? "x"
+									: "plus";
 								setIcon(e.currentTarget, iconName);
 							}}
 							title={
@@ -1094,7 +1203,9 @@ export function ChatInput({
 							}
 							ref={(el) => {
 								if (el) {
-									const iconName = autoMention.isDisabled ? "plus" : "x";
+									const iconName = autoMention.isDisabled
+										? "plus"
+										: "x";
 									setIcon(el, iconName);
 								}
 							}}
@@ -1116,81 +1227,106 @@ export function ChatInput({
 						spellCheck={obsidianSpellcheck}
 					/>
 					{hintText && (
-						<div className="agent-client-hint-overlay" aria-hidden="true">
-							<span className="agent-client-invisible">{commandText}</span>
-							<span className="agent-client-hint-text">{hintText}</span>
+						<div
+							className="agent-client-hint-overlay"
+							aria-hidden="true"
+						>
+							<span className="agent-client-invisible">
+								{commandText}
+							</span>
+							<span className="agent-client-hint-text">
+								{hintText}
+							</span>
 						</div>
 					)}
 				</div>
 
-<<<<<<< HEAD
-				{/* Image Preview Strip (only shown when agent supports images) */}
-				{supportsImages && (
-					<ImagePreviewStrip images={attachedImages} onRemove={removeImage} />
-				)}
-=======
 				{/* Attachment Preview Strip (images + file references) */}
 				<AttachmentPreviewStrip
 					files={attachedFiles}
 					onRemove={removeFile}
 				/>
->>>>>>> aeab217 (feat: support non-image file attachments in chat input)
 
-				{/* Input Actions (Mode Selector + Model Selector + Send Button) */}
+				{/* Input Actions (Config Options / Mode Selector / Model Selector + Send Button) */}
 				<div className="agent-client-chat-input-actions">
-					{/* Mode Selector */}
-					{modes && modes.availableModes.length > 1 && (
-						<div
-							className="agent-client-mode-selector"
-							title={
-								modes.availableModes.find((m) => m.id === modes.currentModeId)
-									?.description ?? "Select mode"
+					{/* Context Usage Indicator (left-aligned via margin-right: auto) */}
+					{usage && (
+						<span
+							className={`agent-client-usage-indicator ${getUsageColorClass(Math.round((usage.used / usage.size) * 100))}`}
+							aria-label={
+								usage.cost
+									? `${formatTokenCount(usage.used)} / ${formatTokenCount(usage.size)} tokens\n$${usage.cost.amount.toFixed(2)}`
+									: `${formatTokenCount(usage.used)} / ${formatTokenCount(usage.size)} tokens`
 							}
 						>
-							<div ref={modeDropdownRef} />
-							<span
-								className="agent-client-mode-selector-icon"
-								ref={(el) => {
-									if (el) setIcon(el, "chevron-down");
-								}}
-							/>
-						</div>
+							{Math.round((usage.used / usage.size) * 100)}%
+						</span>
 					)}
 
-					{/* Model Selector (experimental) */}
-					{models && models.availableModels.length > 1 && (
+					{/* Config Options (supersedes legacy mode/model selectors) */}
+					{configOptions && configOptions.length > 0 ? (
 						<div
-							className="agent-client-model-selector"
-							title={
-								models.availableModels.find(
-									(m) => m.modelId === models.currentModelId,
-								)?.description ?? "Select model"
-							}
-						>
-							<div ref={modelDropdownRef} />
-							<span
-								className="agent-client-model-selector-icon"
-								ref={(el) => {
-									if (el) setIcon(el, "chevron-down");
-								}}
-							/>
-						</div>
+							ref={configOptionsRef}
+							className="agent-client-config-options-container"
+						/>
+					) : (
+						<>
+							{/* Legacy Mode Selector */}
+							{modes && modes.availableModes.length > 1 && (
+								<div
+									className="agent-client-mode-selector"
+									title={
+										modes.availableModes.find(
+											(m) => m.id === modes.currentModeId,
+										)?.description ?? "Select mode"
+									}
+								>
+									<div ref={modeDropdownRef} />
+									<span
+										className="agent-client-mode-selector-icon"
+										ref={(el) => {
+											if (el) setIcon(el, "chevron-down");
+										}}
+									/>
+								</div>
+							)}
+
+							{/* Legacy Model Selector */}
+							{models && models.availableModels.length > 1 && (
+								<div
+									className="agent-client-model-selector"
+									title={
+										models.availableModels.find(
+											(m) =>
+												m.modelId ===
+												models.currentModelId,
+										)?.description ?? "Select model"
+									}
+								>
+									<div ref={modelDropdownRef} />
+									<span
+										className="agent-client-model-selector-icon"
+										ref={(el) => {
+											if (el) setIcon(el, "chevron-down");
+										}}
+									/>
+								</div>
+							)}
+						</>
 					)}
 
 					{/* Send/Stop Button */}
 					<button
 						ref={sendButtonRef}
-						onClick={() => void handleActionButtonClick()}
+						onClick={() => void handleSendOrStop()}
 						disabled={isButtonDisabled}
 						className={`agent-client-chat-send-button ${isSending ? "sending" : ""} ${isButtonDisabled ? "agent-client-disabled" : ""}`}
 						title={
-							isReconnecting
-								? "Reconnecting..."
-								: !isSessionReady
-									? "Connecting..."
-									: isSending
-										? "Stop generation"
-										: "Send message"
+							!isSessionReady
+								? "Connecting..."
+								: isSending
+									? "Stop generation"
+									: "Send message"
 						}
 					></button>
 				</div>

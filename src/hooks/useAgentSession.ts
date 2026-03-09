@@ -536,44 +536,10 @@ export function useAgentSession(
 							}
 						}
 					}
-<<<<<<< HEAD
 				} else if (
 					sessionResult.models &&
 					sessionResult.sessionId
 				) {
-=======
-
-					// Restore last used mode via configOptions
-					const modeOption = sessionResult.configOptions.find(
-						(o) => o.category === "mode",
-					);
-					if (modeOption) {
-						const savedModeId = settings.lastUsedModes[agentId];
-						if (
-							savedModeId &&
-							savedModeId !== modeOption.currentValue &&
-							flattenConfigSelectOptions(
-								modeOption.options,
-							).some((o) => o.value === savedModeId)
-						) {
-							try {
-								const updatedOptions =
-									await agentClient.setSessionConfigOption(
-										sessionResult.sessionId,
-										modeOption.id,
-										savedModeId,
-									);
-								setSession((prev) => ({
-									...prev,
-									configOptions: updatedOptions,
-								}));
-							} catch {
-								// Agent default is fine as fallback
-							}
-						}
-					}
-				} else if (sessionResult.models && sessionResult.sessionId) {
->>>>>>> 96aec16 (feat: persist and restore last used mode per agent (#136))
 					// Legacy fallback: restore model via setSessionModel
 					const savedModelId = settings.lastUsedModels[agentId];
 					if (
