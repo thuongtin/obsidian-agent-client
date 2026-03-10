@@ -27,6 +27,8 @@ import { buildFileUri } from "../shared/path-utils";
 import { convertWindowsPathToWsl } from "../shared/wsl-utils";
 import type AgentClientPlugin from "../plugin";
 import { ChatExporter } from "../shared/chat-exporter";
+import type { AgentUpdateNotification } from "../shared/agent-update-checker";
+import { checkAgentUpdate } from "../shared/agent-update-checker";
 import { getLogger, type Logger } from "../shared/logger";
 import { useAgentSession } from "./useAgentSession";
 import { useAutoExport } from "./useAutoExport";
@@ -83,6 +85,7 @@ export interface UseChatControllerReturn {
 	messages: ReturnType<typeof useChat>["messages"];
 	isSending: boolean;
 	isUpdateAvailable: boolean;
+	agentUpdateNotification: AgentUpdateNotification | null;
 	isLoadingSessionHistory: boolean;
 
 	// Hook returns
@@ -284,6 +287,8 @@ export function useChatController(
 	// Local State
 	// ============================================================
 	const [isUpdateAvailable, setIsUpdateAvailable] = useState(false);
+	const [agentUpdateNotification, setAgentUpdateNotification] =
+		useState<AgentUpdateNotification | null>(null);
 	const [restoredMessage, setRestoredMessage] = useState<string | null>(null);
 
 	// Input state (for broadcast commands - sidebar only)
@@ -914,6 +919,7 @@ export function useChatController(
 		messages,
 		isSending,
 		isUpdateAvailable,
+		agentUpdateNotification,
 		isLoadingSessionHistory,
 
 		// Hook returns

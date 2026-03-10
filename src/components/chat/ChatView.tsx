@@ -94,11 +94,11 @@ function ChatComponent({
 		handleSetModel,
 		inputValue,
 		setInputValue,
-		attachedImages,
-		setAttachedImages,
+		attachedFiles,
+		setAttachedFiles,
 		restoredMessage,
 		handleRestoredMessageConsumed,
-		handleRemoveMessage,
+		agentUpdateNotification,
 	} = controller;
 
 	// ============================================================
@@ -108,7 +108,9 @@ function ChatComponent({
 	// ============================================================
 	useEffect(() => {
 		const unsubscribe = view.onAgentIdRestored((agentId) => {
-			logger.log(`[ChatView] Agent ID restored from workspace: ${agentId}`);
+			logger.log(
+				`[ChatView] Agent ID restored from workspace: ${agentId}`,
+			);
 			setRestoredAgentId(agentId);
 		});
 		return unsubscribe;
@@ -180,8 +182,7 @@ function ChatComponent({
 
 			for (const agent of availableAgents) {
 				menu.addItem((item) => {
-					item
-						.setTitle(agent.displayName)
+					item.setTitle(agent.displayName)
 						.setChecked(agent.id === (session.agentId || ""))
 						.onClick(() => {
 							void handleNewChatWithPersist(agent.id);
@@ -193,8 +194,7 @@ function ChatComponent({
 
 			// -- Actions section --
 			menu.addItem((item) => {
-				item
-					.setTitle("Open new view")
+				item.setTitle("Open new view")
 					.setIcon("plus")
 					.onClick(() => {
 						void plugin.openNewChatViewWithAgent(
@@ -204,8 +204,7 @@ function ChatComponent({
 			});
 
 			menu.addItem((item) => {
-				item
-					.setTitle("Restart agent")
+				item.setTitle("Restart agent")
 					.setIcon("refresh-cw")
 					.onClick(() => {
 						void handleRestartAgent();
@@ -215,8 +214,7 @@ function ChatComponent({
 			menu.addSeparator();
 
 			menu.addItem((item) => {
-				item
-					.setTitle("Plugin settings")
+				item.setTitle("Plugin settings")
 					.setIcon("settings")
 					.onClick(() => {
 						handleOpenSettings();
@@ -256,7 +254,13 @@ function ChatComponent({
 		// Note: useChatController handles session creation, but we need to restart
 		// with the correct agent if it differs
 		void handleNewChat(restoredAgentId);
-	}, [restoredAgentId, session.state, session.agentId, logger, handleNewChat]);
+	}, [
+		restoredAgentId,
+		session.state,
+		session.agentId,
+		logger,
+		handleNewChat,
+	]);
 
 	// ============================================================
 	// Broadcast Command Callbacks
@@ -265,23 +269,23 @@ function ChatComponent({
 	const getInputState = useCallback((): ChatInputState | null => {
 		return {
 			text: inputValue,
-			images: attachedImages,
+			files: attachedFiles,
 		};
-	}, [inputValue, attachedImages]);
+	}, [inputValue, attachedFiles]);
 
 	/** Set input state from broadcast commands */
 	const setInputState = useCallback(
 		(state: ChatInputState) => {
 			setInputValue(state.text);
-			setAttachedImages(state.images);
+			setAttachedFiles(state.files ?? []);
 		},
-		[setInputValue, setAttachedImages],
+		[setInputValue, setAttachedFiles],
 	);
 
 	/** Send message for broadcast commands (returns true if sent) */
 	const sendMessageForBroadcast = useCallback(async (): Promise<boolean> => {
 		// Allow sending if there's text OR images
-		if (!inputValue.trim() && attachedImages.length === 0) {
+		if (!inputValue.trim() && attachedFiles.length === 0) {
 			return false;
 		}
 		if (!isSessionReady || sessionHistory.loading) {
@@ -291,43 +295,40 @@ function ChatComponent({
 			return false;
 		}
 
-		// Convert attached images to ImagePromptContent format
-		const imagesToSend: ImagePromptContent[] = attachedImages.map((img) => ({
-			type: "image",
-			data: img.data,
-			mimeType: img.mimeType,
-		}));
+		// Pass attachedFiles directly (upstream handleSendMessage accepts AttachedFile[])
+		const filesToSend =
+			attachedFiles.length > 0 ? [...attachedFiles] : undefined;
 
 		// Clear input before sending
 		const messageToSend = inputValue.trim();
 		setInputValue("");
-		setAttachedImages([]);
+		setAttachedFiles([]);
 
-		await handleSendMessage(
-			messageToSend,
-			imagesToSend.length > 0 ? imagesToSend : undefined,
-		);
+		await handleSendMessage(messageToSend, filesToSend);
 		return true;
 	}, [
 		inputValue,
-		attachedImages,
+		attachedFiles,
 		isSessionReady,
 		sessionHistory.loading,
 		isSending,
 		handleSendMessage,
 		setInputValue,
-		setAttachedImages,
+		setAttachedFiles,
 	]);
 
 	/** Check if this view can send a message */
 	const canSendForBroadcast = useCallback((): boolean => {
-		const hasContent = inputValue.trim() !== "" || attachedImages.length > 0;
+		const hasContent = inputValue.trim() !== "" || attachedFiles.length > 0;
 		return (
-			hasContent && isSessionReady && !sessionHistory.loading && !isSending
+			hasContent &&
+			isSessionReady &&
+			!sessionHistory.loading &&
+			!isSending
 		);
 	}, [
 		inputValue,
-		attachedImages,
+		attachedFiles,
 		isSessionReady,
 		sessionHistory.loading,
 		isSending,
@@ -437,18 +438,23 @@ function ChatComponent({
 					callback: CustomEventCallback,
 				) => ReturnType<typeof workspace.on>;
 			}
-		).on("agent-client:approve-active-permission", (targetViewId?: string) => {
-			// Only respond if this view is the target (or no target specified)
-			if (targetViewId && targetViewId !== viewId) {
-				return;
-			}
-			void (async () => {
-				const success = await permission.approveActivePermission();
-				if (!success) {
-					new Notice("[Agent Client] No active permission request");
+		).on(
+			"agent-client:approve-active-permission",
+			(targetViewId?: string) => {
+				// Only respond if this view is the target (or no target specified)
+				if (targetViewId && targetViewId !== viewId) {
+					return;
 				}
-			})();
-		});
+				void (async () => {
+					const success = await permission.approveActivePermission();
+					if (!success) {
+						new Notice(
+							"[Agent Client] No active permission request",
+						);
+					}
+				})();
+			},
+		);
 
 		const rejectRef = (
 			workspace as unknown as {
@@ -457,18 +463,23 @@ function ChatComponent({
 					callback: CustomEventCallback,
 				) => ReturnType<typeof workspace.on>;
 			}
-		).on("agent-client:reject-active-permission", (targetViewId?: string) => {
-			// Only respond if this view is the target (or no target specified)
-			if (targetViewId && targetViewId !== viewId) {
-				return;
-			}
-			void (async () => {
-				const success = await permission.rejectActivePermission();
-				if (!success) {
-					new Notice("[Agent Client] No active permission request");
+		).on(
+			"agent-client:reject-active-permission",
+			(targetViewId?: string) => {
+				// Only respond if this view is the target (or no target specified)
+				if (targetViewId && targetViewId !== viewId) {
+					return;
 				}
-			})();
-		});
+				void (async () => {
+					const success = await permission.rejectActivePermission();
+					if (!success) {
+						new Notice(
+							"[Agent Client] No active permission request",
+						);
+					}
+				})();
+			},
+		);
 
 		const cancelRef = (
 			workspace as unknown as {
@@ -509,7 +520,10 @@ function ChatComponent({
 			: undefined;
 
 	return (
-		<div className="agent-client-chat-view-container" style={chatFontSizeStyle}>
+		<div
+			className="agent-client-chat-view-container"
+			style={chatFontSizeStyle}
+		>
 			<ChatHeader
 				agentLabel={activeAgentLabel}
 				isUpdateAvailable={isUpdateAvailable}
@@ -531,14 +545,12 @@ function ChatComponent({
 				view={view}
 				acpClient={acpClientRef.current}
 				onApprovePermission={permission.approvePermission}
-				onDeleteMessage={handleRemoveMessage}
 			/>
 
 			<ChatInput
 				isSending={isSending}
 				isSessionReady={isSessionReady}
 				isRestoringSession={sessionHistory.loading}
-				isReconnecting={session.state === "reconnecting"}
 				agentLabel={activeAgentLabel}
 				availableCommands={session.availableCommands || []}
 				autoMentionEnabled={settings.autoMentionActiveNote}
@@ -560,11 +572,13 @@ function ChatComponent({
 				// Controlled component props (for broadcast commands)
 				inputValue={inputValue}
 				onInputChange={setInputValue}
-				attachedImages={attachedImages}
-				onAttachedImagesChange={setAttachedImages}
+				attachedFiles={attachedFiles}
+				onAttachedFilesChange={setAttachedFiles}
 				// Error overlay props
 				errorInfo={errorInfo}
 				onClearError={handleClearError}
+				agentUpdateNotification={agentUpdateNotification}
+				onClearAgentUpdate={() => {}}
 				messages={messages}
 			/>
 		</div>
@@ -595,7 +609,8 @@ export class ChatView extends ItemView implements IChatViewContainer {
 	/** Initial agent ID passed via state (for openNewChatViewWithAgent) */
 	private initialAgentId: string | null = null;
 	/** Callbacks to notify React when agentId is restored from workspace state */
-	private agentIdRestoredCallbacks: Set<(agentId: string) => void> = new Set();
+	private agentIdRestoredCallbacks: Set<(agentId: string) => void> =
+		new Set();
 
 	// Callbacks for input state access (broadcast commands)
 	private getDisplayNameCallback: GetDisplayNameCallback | null = null;
@@ -826,7 +841,11 @@ export class ChatView extends ItemView implements IChatViewContainer {
 
 		this.root = createRoot(container);
 		this.root.render(
-			<ChatComponent plugin={this.plugin} view={this} viewId={this.viewId} />,
+			<ChatComponent
+				plugin={this.plugin}
+				view={this}
+				viewId={this.viewId}
+			/>,
 		);
 
 		// Register with plugin's view registry
