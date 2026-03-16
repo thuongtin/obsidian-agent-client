@@ -32,8 +32,12 @@ export interface ChatMessagesProps {
 	/** ACP client for terminal operations */
 	acpClient?: IAcpClient;
 	/** Callback to approve a permission request */
-	onApprovePermission?: (requestId: string, optionId: string) => Promise<void>;
-	onDeleteMessage?: (messageId: string) => void;
+	onApprovePermission?: (
+		requestId: string,
+		optionId: string,
+	) => Promise<void>;
+	/** Whether a permission request is currently pending */
+	hasActivePermission: boolean;
 }
 
 /**
@@ -56,7 +60,7 @@ export function ChatMessages({
 	view,
 	acpClient,
 	onApprovePermission,
-	onDeleteMessage,
+	hasActivePermission,
 }: ChatMessagesProps) {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const [isAtBottom, setIsAtBottom] = useState(true);
@@ -147,6 +151,11 @@ export function ChatMessages({
 							<div className="agent-client-loading-dot"></div>
 							<div className="agent-client-loading-dot"></div>
 						</div>
+						{hasActivePermission && (
+							<span className="agent-client-loading-status">
+								Waiting for permission...
+							</span>
+						)}
 					</div>
 					{!isAtBottom && (
 						<button

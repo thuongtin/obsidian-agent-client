@@ -545,6 +545,7 @@ function ChatComponent({
 				view={view}
 				acpClient={acpClientRef.current}
 				onApprovePermission={permission.approvePermission}
+				hasActivePermission={permission.activePermission != null}
 			/>
 
 			<ChatInput
