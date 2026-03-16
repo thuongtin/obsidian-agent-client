@@ -331,7 +331,8 @@ export function ChatInput({
 		(files: File[]): AttachedFile[] => {
 			// Get file path via Electron's webUtils API (File.path was removed in Electron 32)
 			// eslint-disable-next-line @typescript-eslint/no-require-imports
-			const { webUtils } = eval("require")("electron") as {
+			// eslint-disable-next-line @typescript-eslint/no-var-requires
+			const { webUtils } = require("electron") as {
 				webUtils: { getPathForFile: (file: File) => string };
 			};
 			const result: AttachedFile[] = [];

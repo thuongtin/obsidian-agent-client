@@ -20,7 +20,7 @@ export default defineConfig({
 		"react-dom",
 		"semver",
 	],
-	external: ["obsidian"],
+	external: ["obsidian", "electron"],
 	env: {
 		NODE_ENV: process.env.NODE_ENV || "production",
 	},
