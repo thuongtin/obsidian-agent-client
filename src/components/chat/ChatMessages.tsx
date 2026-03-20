@@ -38,6 +38,8 @@ export interface ChatMessagesProps {
 	) => Promise<void>;
 	/** Whether a permission request is currently pending */
 	hasActivePermission: boolean;
+	/** Callback to delete a message */
+	onDeleteMessage?: (messageId: string) => void;
 }
 
 /**
@@ -61,6 +63,7 @@ export function ChatMessages({
 	acpClient,
 	onApprovePermission,
 	hasActivePermission,
+	onDeleteMessage,
 }: ChatMessagesProps) {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const [isAtBottom, setIsAtBottom] = useState(true);

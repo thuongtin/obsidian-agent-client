@@ -129,6 +129,7 @@ export interface UseChatControllerReturn {
 	setAttachedFiles: (files: AttachedFile[]) => void;
 	restoredMessage: string | null;
 	handleRestoredMessageConsumed: () => void;
+	handleRemoveMessage: (messageId: string) => void;
 
 	// History modal management
 	historyModalRef: React.RefObject<SessionHistoryModal | null>;
@@ -958,6 +959,7 @@ export function useChatController(
 		setAttachedFiles,
 		restoredMessage,
 		handleRestoredMessageConsumed,
+		handleRemoveMessage: chat.removeMessage,
 
 		// History modal management
 		historyModalRef,

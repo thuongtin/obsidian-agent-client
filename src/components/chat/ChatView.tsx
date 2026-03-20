@@ -98,6 +98,7 @@ function ChatComponent({
 		setAttachedFiles,
 		restoredMessage,
 		handleRestoredMessageConsumed,
+		handleRemoveMessage,
 		agentUpdateNotification,
 	} = controller;
 
@@ -546,6 +547,7 @@ function ChatComponent({
 				acpClient={acpClientRef.current}
 				onApprovePermission={permission.approvePermission}
 				hasActivePermission={permission.activePermission != null}
+				onDeleteMessage={handleRemoveMessage}
 			/>
 
 			<ChatInput
